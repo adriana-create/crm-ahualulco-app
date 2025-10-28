@@ -1,0 +1,275 @@
+
+import React from 'react';
+import type { Customer, CustomerStrategy, Task } from '../types';
+import { LegalStatus, FinancialStatus, StatusCarpetaATC } from '../types';
+import { ChevronLeftIcon } from './icons/ChevronLeftIcon';
+import ProgressBar from './ProgressBar';
+import StrategyAccordion from './StrategyAccordion';
+import { TrashIcon } from './icons/TrashIcon';
+import InputGroup from './InputGroup';
+
+interface CustomerDetailProps {
+  customer: Customer;
+  onBack: () => void;
+  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'pathwayToTitling' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta'>>) => void;
+  onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
+  onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
+  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
+  onUpdateStrategyCustomData: (customerId: string, strategyId: string, key: string, value: string | number | boolean) => void;
+  onAddStrategy: (customerId: string, strategyId: string) => void;
+  onDeleteCustomer: (customerId: string) => void;
+}
+
+const DetailItem: React.FC<{ label: string; value?: string | number; children?: React.ReactNode }> = ({ label, value, children }) => (
+    <div>
+        <dt className="text-sm font-medium text-gray-500">{label}</dt>
+        <dd className="mt-1 text-sm text-gray-900">{children || value}</dd>
+    </div>
+);
+
+const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdateDetails, onUpdateStrategy, onUpdateTask, onAddTask, onUpdateStrategyCustomData, onAddStrategy, onDeleteCustomer }) => {
+  
+  const handleDelete = () => {
+    if (window.confirm('¿Está seguro de que desea eliminar este cliente? Esta acción no se puede deshacer.')) {
+        onDeleteCustomer(customer.id);
+    }
+  };
+  
+  const handleContratoATCChange = (isChecked: boolean) => {
+    onUpdateDetails(customer.id, { contratoATC: isChecked });
+
+    if (isChecked) {
+        const hasTAIStrategy = customer.strategies.some(s => s.strategyId === 'TAI');
+        if (hasTAIStrategy) {
+            // Check if a similar task already exists to avoid duplicates
+            const hasATCTask = customer.strategies
+                .find(s => s.strategyId === 'TAI')?.tasks
+                .some(t => t.description.includes('Asistencia Técnica'));
+
+            if (!hasATCTask) {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 7);
+                const dueDate = tomorrow.toISOString().split('T')[0];
+
+                onAddTask(customer.id, 'TAI', {
+                    description: 'Realizar visita inicial de Asistencia Técnica',
+                    dueDate: dueDate,
+                    assignedTo: 'Equipo Técnico'
+                });
+                alert('Se ha agregado una tarea de seguimiento de ATC a la estrategia de Asistencia Técnica.');
+            }
+        } else {
+            alert('Para registrar tareas de ATC, primero debe activar la estrategia "Asistencia técnica + incentivos a la construcción" para este cliente.');
+        }
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-primary bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors"
+      >
+        <ChevronLeftIcon className="w-5 h-5" />
+        Volver a la Lista de Clientes
+      </button>
+
+      <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-gray-200 bg-header-bg text-white flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold">{`${customer.firstName} ${customer.paternalLastName} ${customer.maternalLastName}`}</h2>
+            <p className="text-gray-300 mt-1">{customer.id}</p>
+          </div>
+          <button
+            onClick={handleDelete}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-status-red rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-status-red transition-colors"
+            aria-label={`Delete ${customer.firstName}`}
+          >
+            <TrashIcon className="w-5 h-5" />
+            Eliminar Cliente
+          </button>
+        </div>
+
+        <div className="p-6">
+            <h3 className="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Información del Cliente</h3>
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+                <DetailItem label="Contacto" value={customer.contact} />
+                <DetailItem label="Lotes" value={customer.lots} />
+                <DetailItem label="Manzana">
+                  <input
+                      id="manzana"
+                      value={customer.manzana}
+                      onChange={(e) => onUpdateDetails(customer.id, { manzana: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                  />
+                </DetailItem>
+                <DetailItem label="Lote">
+                  <input
+                      id="lote"
+                      value={customer.lote}
+                      onChange={(e) => onUpdateDetails(customer.id, { lote: e.target.value })}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                  />
+                </DetailItem>
+                <DetailItem label="Group" value={customer.group} />
+                <DetailItem label="Estatus Legal">
+                  <select
+                      id="legalStatus"
+                      value={customer.legalStatus}
+                      onChange={(e) => onUpdateDetails(customer.id, { legalStatus: e.target.value as LegalStatus })}
+                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                  >
+                      {Object.values(LegalStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </DetailItem>
+                <DetailItem label="Estatus Financiero">
+                   <select
+                        id="financialStatus"
+                        value={customer.financialStatus}
+                        onChange={(e) => onUpdateDetails(customer.id, { financialStatus: e.target.value as FinancialStatus })}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                    >
+                        {Object.values(FinancialStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </DetailItem>
+                <DetailItem label="Camino a la Titulación (%)">
+                   <input
+                        type="number"
+                        id="pathwayToTitling"
+                        value={customer.pathwayToTitling}
+                        onChange={(e) => {
+                            const value = Math.max(0, Math.min(100, Number(e.target.value)));
+                            onUpdateDetails(customer.id, { pathwayToTitling: value });
+                        }}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                        min="0"
+                        max="100"
+                   />
+                </DetailItem>
+                <DetailItem label="Progreso Financiero (%)">
+                     <input
+                        type="number"
+                        id="financialProgress"
+                        value={customer.financialProgress}
+                        onChange={(e) => {
+                            const value = Math.max(0, Math.min(100, Number(e.target.value)));
+                            onUpdateDetails(customer.id, { financialProgress: value });
+                        }}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                        min="0"
+                        max="100"
+                   />
+                    <div className="mt-2">
+                        <ProgressBar percentage={customer.financialProgress} />
+                    </div>
+                </DetailItem>
+                <div className="sm:col-span-2 lg:col-span-3">
+                    <InputGroup
+                        label="Motivación para Construir"
+                        id="motivation"
+                        as="textarea"
+                        rows={2}
+                        value={customer.motivation}
+                        onChange={(e) => onUpdateDetails(customer.id, { motivation: e.target.value })}
+                    />
+                </div>
+                <DetailItem label="Modificación en superficie de lote">
+                    <div className="flex items-center space-x-2 mt-2">
+                        <label className="text-sm">No</label>
+                        <div className="relative">
+                            <input
+                                type="checkbox"
+                                id="modificacionLote"
+                                className="sr-only"
+                                checked={customer.modificacionLote}
+                                onChange={(e) => onUpdateDetails(customer.id, { modificacionLote: e.target.checked })}
+                            />
+                            <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.modificacionLote ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { modificacionLote: !customer.modificacionLote })}></div>
+                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.modificacionLote ? 'transform translate-x-4' : ''}`}></div>
+                        </div>
+                        <label className="text-sm">Sí</label>
+                    </div>
+                </DetailItem>
+                <DetailItem label="Contrató Servicio de ATC">
+                    <div className="flex items-center space-x-2 mt-2">
+                        <label className="text-sm">No</label>
+                        <div className="relative">
+                            <input
+                                type="checkbox"
+                                id="contratoATC"
+                                className="sr-only"
+                                checked={customer.contratoATC}
+                                onChange={(e) => handleContratoATCChange(e.target.checked)}
+                            />
+                            <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.contratoATC ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => handleContratoATCChange(!customer.contratoATC)}></div>
+                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.contratoATC ? 'transform translate-x-4' : ''}`}></div>
+                        </div>
+                        <label className="text-sm">Sí</label>
+                    </div>
+                </DetailItem>
+                {customer.contratoATC && (
+                    <>
+                        <DetailItem label="Pagó ATC">
+                            <div className="flex items-center space-x-2 mt-2">
+                                <label className="text-sm">No</label>
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        id="pagoATC"
+                                        className="sr-only"
+                                        checked={customer.pagoATC}
+                                        onChange={(e) => onUpdateDetails(customer.id, { pagoATC: e.target.checked })}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.pagoATC ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { pagoATC: !customer.pagoATC })}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.pagoATC ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                                <label className="text-sm">Sí</label>
+                            </div>
+                        </DetailItem>
+                        <DetailItem label="Status de Carpeta">
+                           <select
+                                id="statusCarpetaATC"
+                                value={customer.statusCarpetaATC}
+                                onChange={(e) => onUpdateDetails(customer.id, { statusCarpetaATC: e.target.value as StatusCarpetaATC })}
+                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                            >
+                                {Object.values(StatusCarpetaATC).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </DetailItem>
+                        <DetailItem label="Recordatorio entrega de carpeta">
+                             <input
+                                type="date"
+                                id="recordatorioEntregaCarpeta"
+                                value={customer.recordatorioEntregaCarpeta}
+                                onChange={(e) => onUpdateDetails(customer.id, { recordatorioEntregaCarpeta: e.target.value })}
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                           />
+                        </DetailItem>
+                    </>
+                )}
+                <DetailItem label="Última Actualización" value={new Date(customer.lastUpdate).toLocaleString()} />
+            </dl>
+        </div>
+      </div>
+      
+      <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-gray-200">
+            <h3 className="text-xl font-semibold text-gray-800">Estrategias y Tareas</h3>
+            <p className="text-gray-500 mt-1">Gestionar la participación y las acciones de seguimiento para cada estrategia.</p>
+        </div>
+        <div className="p-6 space-y-4">
+           <StrategyAccordion 
+             customer={customer} 
+             onUpdateStrategy={onUpdateStrategy} 
+             onUpdateTask={onUpdateTask}
+             onAddTask={onAddTask}
+             onUpdateStrategyCustomData={onUpdateStrategyCustomData}
+             onAddStrategy={onAddStrategy}
+           />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CustomerDetail;

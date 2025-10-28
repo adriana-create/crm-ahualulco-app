@@ -1,0 +1,242 @@
+
+import React, { useState } from 'react';
+import type { Customer, CustomerStrategy, Task } from '../types';
+import { StrategyStatus } from '../types';
+import { STRATEGIES, STRATEGY_SPECIFIC_FIELDS } from '../constants';
+import { ChevronDownIcon } from './icons/ChevronDownIcon';
+import { CheckCircleIcon } from './icons/CheckCircleIcon';
+import { ClockIcon } from './icons/ClockIcon';
+import { PlusIcon } from './icons/PlusIcon';
+import TaskModal from './TaskModal';
+import SolidarityTitlingLoanForm from './SolidarityTitlingLoanForm';
+import TailoredLegalSupportForm from './TailoredLegalSupportForm';
+import DirectPromotionFIForm from './DirectPromotionFIForm';
+
+interface StrategyAccordionProps {
+  customer: Customer;
+  onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
+  onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
+  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
+  onUpdateStrategyCustomData: (customerId: string, strategyId: string, key: string, value: string | number | boolean) => void;
+  onAddStrategy: (customerId: string, strategyId: string) => void;
+}
+
+const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdateStrategy, onUpdateTask, onAddTask, onUpdateStrategyCustomData, onAddStrategy }) => {
+    const [openStrategyId, setOpenStrategyId] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalStrategyId, setModalStrategyId] = useState<string | null>(null);
+
+    const toggleStrategy = (strategyId: string) => {
+        setOpenStrategyId(prevId => (prevId === strategyId ? null : strategyId));
+    };
+
+    const handleOpenModal = (strategyId: string) => {
+        setModalStrategyId(strategyId);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setModalStrategyId(null);
+    };
+
+    const handleAddTask = (task: Omit<Task, 'id'|'isCompleted'>) => {
+        if(modalStrategyId) {
+            onAddTask(customer.id, modalStrategyId, task);
+        }
+    };
+    
+    const potentialStrategyDetails = customer.potentialStrategies
+        .map(id => STRATEGIES.find(s => s.id === id))
+        .filter((s): s is NonNullable<typeof s> => s !== undefined);
+
+
+    if (potentialStrategyDetails.length === 0) {
+        return <p className="text-center text-gray-500 italic py-4">No hay estrategias potenciales asignadas. Puede asignarlas desde la tabla principal de clientes.</p>;
+    }
+
+
+    return (
+        <div className="space-y-3">
+            {potentialStrategyDetails.map((strategyInfo) => {
+                const custStrategy = customer.strategies.find(cs => cs.strategyId === strategyInfo.id);
+
+                if (!custStrategy) {
+                    const isTAI = strategyInfo.id === 'TAI';
+                    const canActivate = isTAI ? customer.contratoATC : true;
+                    // This is a potential strategy that has not been activated yet.
+                    return (
+                        <div key={strategyInfo.id} className="border border-dashed border-gray-300 rounded-lg p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <div>
+                                <h4 className="font-semibold text-gray-700">{strategyInfo.name}</h4>
+                                <p className="text-sm text-gray-500 mt-1">{strategyInfo.description}</p>
+                                {!canActivate && isTAI && (
+                                    <p className="text-xs text-status-yellow mt-2 font-semibold bg-yellow-100 p-1 rounded">
+                                        Requiere que "Contrató Servicio de ATC" sea "Sí" para activar.
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => onAddStrategy(customer.id, strategyInfo.id)}
+                                disabled={!canActivate}
+                                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-secondary border border-transparent rounded-md hover:bg-brand-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-secondary disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            >
+                                <PlusIcon className="w-5 h-5" />
+                                Activar Seguimiento
+                            </button>
+                        </div>
+                    );
+                }
+
+                const isOpen = openStrategyId === strategyInfo.id;
+                const specificFields = STRATEGY_SPECIFIC_FIELDS[strategyInfo.id];
+                const isSTL = strategyInfo.id === 'STL';
+                const isTLS = strategyInfo.id === 'TLS';
+                const isDPFI = strategyInfo.id === 'DPFI';
+                
+                return (
+                    <div key={strategyInfo.id} className="border border-gray-200 rounded-lg">
+                        <button
+                            onClick={() => toggleStrategy(strategyInfo.id)}
+                            className="w-full flex justify-between items-center p-4 text-left hover:bg-gray-50 focus:outline-none"
+                        >
+                            <div className="flex items-center">
+                                <span className="font-semibold text-brand-primary">{strategyInfo.name}</span>
+                                <span className="ml-4 px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-200 rounded-full">{custStrategy.status}</span>
+                            </div>
+                           <div className="flex items-center gap-4">
+                            <label htmlFor={`accept-${strategyInfo.id}`} className="flex items-center cursor-pointer">
+                                <span className="mr-2 text-sm text-gray-600">Aceptó</span>
+                                <div className="relative">
+                                    <input 
+                                        type="checkbox" 
+                                        id={`accept-${strategyInfo.id}`}
+                                        className="sr-only" 
+                                        checked={custStrategy.accepted}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            onUpdateStrategy(customer.id, strategyInfo.id, { accepted: e.target.checked });
+                                        }}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full ${custStrategy.accepted ? 'bg-brand-primary' : 'bg-gray-300'}`}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${custStrategy.accepted ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                            </label>
+                            <ChevronDownIcon className={`w-5 h-5 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                           </div>
+                        </button>
+                        {isOpen && (
+                             <div className="p-4 border-t border-gray-200 bg-gray-50">
+                                {isSTL ? (
+                                    <SolidarityTitlingLoanForm 
+                                        customer={customer}
+                                        customerStrategy={custStrategy}
+                                        onUpdateStrategy={onUpdateStrategy}
+                                    />
+                                ) : isTLS ? (
+                                    <TailoredLegalSupportForm
+                                        customer={customer}
+                                        customerStrategy={custStrategy}
+                                        onUpdateStrategy={onUpdateStrategy}
+                                    />
+                                ) : isDPFI ? (
+                                    <DirectPromotionFIForm
+                                        customer={customer}
+                                        customerStrategy={custStrategy}
+                                        onUpdateStrategy={onUpdateStrategy}
+                                    />
+                                ) : (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Descripción</label>
+                                        <p className="text-sm text-gray-600 mt-1">{strategyInfo.description}</p>
+                                    </div>
+                                    <div>
+                                        <label htmlFor={`status-${strategyInfo.id}`} className="block text-sm font-medium text-gray-700">Estatus</label>
+                                        <select
+                                            id={`status-${strategyInfo.id}`}
+                                            value={custStrategy.status}
+                                            onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { status: e.target.value as StrategyStatus })}
+                                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                                        >
+                                            {Object.values(StrategyStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Fecha de última actualización: {new Date(custStrategy.lastUpdate).toLocaleString()}
+                                        </p>
+                                    </div>
+                                    </div>
+
+                                    {specificFields && specificFields.length > 0 && (
+                                        <div className="mt-4 pt-4 border-t border-gray-200">
+                                            <h4 className="text-md font-semibold text-gray-700 mb-2">Detalles Específicos de la Estrategia</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {specificFields.map(field => (
+                                                    <div key={field.key}>
+                                                        <label htmlFor={`${strategyInfo.id}-${field.key}`} className="block text-sm font-medium text-gray-700">
+                                                            {field.label}
+                                                        </label>
+                                                        <input
+                                                            type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
+                                                            id={`${strategyInfo.id}-${field.key}`}
+                                                            value={String(custStrategy.customData?.[field.key] ?? '')}
+                                                            onChange={(e) => {
+                                                                let value: string | number = e.target.value;
+                                                                if (field.type === 'number') {
+                                                                    value = parseFloat(e.target.value) || 0;
+                                                                }
+                                                                onUpdateStrategyCustomData(customer.id, strategyInfo.id, field.key, value);
+                                                            }}
+                                                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                                )}
+
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h4 className="text-md font-semibold text-gray-700">Tareas</h4>
+                                        <button onClick={() => handleOpenModal(strategyInfo.id)} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-brand-primary border border-transparent rounded-md hover:bg-brand-secondary focus:outline-none">
+                                           <PlusIcon className="w-4 h-4"/> Agregar Tarea
+                                        </button>
+                                    </div>
+                                    <ul className="space-y-2">
+                                        {custStrategy.tasks.length > 0 ? custStrategy.tasks.map(task => (
+                                            <li key={task.id} className="flex items-center justify-between p-3 bg-white border rounded-md">
+                                                <div className="flex items-center">
+                                                     <button onClick={() => onUpdateTask(customer.id, strategyInfo.id, task.id, { isCompleted: !task.isCompleted })} className="mr-3">
+                                                      {task.isCompleted ? <CheckCircleIcon className="w-6 h-6 text-status-green" /> : <ClockIcon className="w-6 h-6 text-status-yellow" />}
+                                                    </button>
+                                                    <div>
+                                                        <p className={`text-sm ${task.isCompleted ? 'line-through text-gray-500' : 'text-gray-800'}`}>{task.description}</p>
+                                                        <p className="text-xs text-gray-500">
+                                                            Vence: {new Date(task.dueDate).toLocaleDateString()} | Asignado a: {task.assignedTo}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        )) : <p className="text-sm text-gray-500 text-center py-4">Aún no hay tareas para esta estrategia.</p>}
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+             {isModalOpen && modalStrategyId && (
+                <TaskModal
+                    isOpen={isModalOpen}
+                    onClose={handleCloseModal}
+                    onAddTask={handleAddTask}
+                />
+            )}
+        </div>
+    );
+};
+
+export default StrategyAccordion;
