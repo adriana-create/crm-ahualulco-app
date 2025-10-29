@@ -131,7 +131,35 @@ const SolidarityTitlingLoanForm: React.FC<STLFormProps> = ({ customer, customerS
                                     <td className="px-4 py-2 whitespace-nowrap"><input type="number" value={abono.cantidad} onChange={e => handleAbonoUpdate(index, { cantidad: parseFloat(e.target.value) || 0 })} className="w-24 text-sm border-gray-300 rounded-md"/></td>
                                     <td className="px-4 py-2 whitespace-nowrap"><input type="date" value={abono.fecha} onChange={e => handleAbonoUpdate(index, { fecha: e.target.value })} className="w-36 text-sm border-gray-300 rounded-md"/></td>
                                     <td className="px-4 py-2 whitespace-nowrap"><input type="text" value={abono.formaDePago} onChange={e => handleAbonoUpdate(index, { formaDePago: e.target.value })} className="w-32 text-sm border-gray-300 rounded-md"/></td>
-                                    <td className="px-4 py-2 whitespace-nowrap"><input type="text" value={abono.comprobante} onChange={e => handleAbonoUpdate(index, { comprobante: e.target.value })} className="w-24 text-sm border-gray-300 rounded-md"/></td>
+                                    <td className="px-4 py-2 whitespace-nowrap">
+                                        <div className="flex rounded-md shadow-sm">
+                                            <input
+                                                type="url"
+                                                value={abono.comprobante || ''}
+                                                onChange={(e) => handleAbonoUpdate(index, { comprobante: e.target.value })}
+                                                className="flex-1 min-w-0 block w-full px-3 py-1 rounded-none rounded-l-md focus:ring-brand-primary focus:border-brand-primary sm:text-sm border-gray-300"
+                                                placeholder="https://..."
+                                            />
+                                            <a
+                                                href={abono.comprobante?.startsWith('http') ? abono.comprobante : '#'}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={`inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm ${
+                                                    !abono.comprobante || !abono.comprobante.startsWith('http')
+                                                        ? 'opacity-50 cursor-not-allowed'
+                                                        : 'hover:bg-gray-100'
+                                                }`}
+                                                onClick={(e) => {
+                                                    if (!abono.comprobante || !abono.comprobante.startsWith('http')) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                                aria-disabled={!abono.comprobante || !abono.comprobante.startsWith('http')}
+                                            >
+                                                <ExternalLinkIcon className="h-4 w-4" />
+                                            </a>
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-2 whitespace-nowrap"><input type="checkbox" checked={abono.validado} onChange={e => handleAbonoUpdate(index, { validado: e.target.checked })} className="h-4 w-4 text-brand-primary focus:ring-brand-light border-gray-300 rounded"/></td>
                                 </tr>
                             ))}

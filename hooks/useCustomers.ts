@@ -1,61 +1,41 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, FinancialStatus, StatusCarpetaATC } from '../types';
+import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, FinancialStatus, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData } from '../types';
 import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS } from '../constants';
 
 // IMPORTANT: Paste your deployed Google Apps Script URL here.
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwFi30K7rm-4ApAMHXAd0IbLXBMrXxlaecXMoYThnjwSOAFGHOXbDYWBikF2r3ekufm/exec';
 
-/**
- * A centralized and robust function for making API requests to the Google Apps Script.
- * It safely handles responses to prevent app crashes from malformed or non-JSON data.
- */
 const fetchFromScript = async (action: string, payload: any) => {
     try {
         const response = await fetch(SCRIPT_URL, {
             method: 'POST',
-            // Using 'text/plain' is a reliable way to avoid CORS preflight requests
-            // with Google Apps Script, which is a common source of "Failed to fetch".
             headers: {
                 'Content-Type': 'text/plain;charset=UTF-8',
             },
             mode: 'cors',
             body: JSON.stringify({ action, payload }),
         });
-
-        // Always read the response as text first. This is safer than directly
-        // calling .json() which can throw an uncatchable error in some cases.
         const responseText = await response.text();
-
         if (!response.ok) {
-            // If the server returned an error (e.g., 404, 500), use the text as the error message.
-            // We check for '<' to avoid displaying a full HTML error page from Google.
             const errorDetails = responseText && !responseText.trim().startsWith('<')
                 ? responseText
                 : `Error del servidor: ${response.status} ${response.statusText}`;
             throw new Error(errorDetails);
         }
-        
-        // If the response was successful (200 OK), now we can safely parse the text.
         try {
-            // Handle cases where the response might be empty text
             if (!responseText) {
-                return { success: true, data: [] }; // Assume success with empty data for empty response
+                return { success: true, data: [] };
             }
             return JSON.parse(responseText);
         } catch (parseError) {
             console.error("Error al analizar la respuesta JSON:", responseText);
             throw new Error("Se recibió una respuesta inválida del servidor. Verifique el formato de los datos en Google Apps Script.");
         }
-
     } catch (error) {
-        // This will catch network errors (like 'Failed to fetch'), errors thrown
-        // from non-ok responses, and JSON parsing errors. Re-throw to be handled by the caller.
         throw error;
     }
 };
 
-
-// Helper function to handle the API's success/error envelope.
 const apiRequest = async (action: string, payload: any) => {
     try {
         const result = await fetchFromScript(action, payload);
@@ -66,15 +46,81 @@ const apiRequest = async (action: string, payload: any) => {
         return result;
     } catch (error) {
         console.error(`Error al realizar la acción "${action}":`, error);
-        // Let the calling function decide how to present the error to the user.
         throw error;
     }
 };
+
+const recalculateStrategyStatus = (strategy: CustomerStrategy): StrategyStatus => {
+    const { status, strategyId, tasks, customData, accepted } = strategy;
+
+    if (status === StrategyStatus.OnHold || status === StrategyStatus.Rejected) {
+        return status;
+    }
+
+    let isCompleted = false;
+    if (strategyId === 'STL') {
+        const data = customData as SolidarityTitlingLoanData;
+        if (data && data.abonos) {
+            const totalAbonado = data.abonos.reduce((acc, abono) => acc + (abono.realizado && abono.validado ? Number(abono.cantidad) || 0 : 0), 0);
+            if (data.montoPrestamo > 0 && totalAbonado >= data.montoPrestamo) {
+                isCompleted = true;
+            }
+        }
+    } else if (strategyId === 'TLS') {
+        const data = customData as TailoredLegalSupportData;
+        if (data && data.tramiteActual === 'Inicio de construcción' && data.estatusTramite === 'Completado') {
+            isCompleted = true;
+        }
+    } else if (strategyId === 'DPFI') {
+        const data = customData as DirectPromotionFIData;
+        if (data && data.logroCredito) {
+            isCompleted = true;
+        }
+    }
+
+    if (tasks.length > 0 && tasks.every(t => t.isCompleted)) {
+        isCompleted = true;
+    }
+
+    if (isCompleted) {
+        return StrategyStatus.Completed;
+    }
+
+    let isInProgress = false;
+    if (accepted || tasks.length > 0) {
+        isInProgress = true;
+    }
+
+    if (strategyId === 'STL') {
+        const data = customData as SolidarityTitlingLoanData;
+        if (data && (data.expediente || data.firmoAdenda || data.abonos?.some(a => a.realizado))) {
+            isInProgress = true;
+        }
+    } else if (strategyId === 'TLS') {
+        const data = customData as TailoredLegalSupportData;
+        if (data && (data.fechaUltimoContacto || data.tramiteActual || data.responsable)) {
+            isInProgress = true;
+        }
+    } else if (strategyId === 'DPFI') {
+        const data = customData as DirectPromotionFIData;
+        if (data && (data.fechaUltimoContacto || data.institucion || data.logroCredito)) {
+            isInProgress = true;
+        }
+    }
+
+    if (isInProgress) {
+        return StrategyStatus.InProgress;
+    }
+
+    return StrategyStatus.NotStarted;
+};
+
 
 export const useCustomers = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
@@ -82,14 +128,10 @@ export const useCustomers = () => {
     try {
       const result = await fetchFromScript('GET_CUSTOMERS', {});
       if (result.success) {
-        // DEFENSIVE CHECK: Ensure data from the API is an array to prevent crashes.
         if (!Array.isArray(result.data)) {
             console.error("Data received from API is not an array:", result.data);
             throw new Error("Se recibió un formato de datos inesperado del servidor.");
         }
-
-        // Sanitize each customer object to ensure required array fields exist, preventing
-        // downstream .map() or .filter() calls from crashing the app.
         const typedCustomers = result.data.map((c: any) => ({
             ...c,
             strategies: Array.isArray(c.strategies) 
@@ -99,15 +141,19 @@ export const useCustomers = () => {
             lots: parseInt(c.lots, 10) || 0,
             pathwayToTitling: parseInt(c.pathwayToTitling, 10) || 0,
             financialProgress: parseInt(c.financialProgress, 10) || 0,
+            hasTituloPropiedad: !!c.hasTituloPropiedad,
+            hasDeslinde: !!c.hasDeslinde,
+            hasPermisoConstruccion: !!c.hasPermisoConstruccion,
             modificacionLote: !!c.modificacionLote,
             contratoATC: !!c.contratoATC,
             pagoATC: !!c.pagoATC,
             statusCarpetaATC: c.statusCarpetaATC || StatusCarpetaATC.NotApplicable,
             recordatorioEntregaCarpeta: c.recordatorioEntregaCarpeta || '',
             responsable: c.responsable || '',
+            startedConstruction: !!c.startedConstruction,
         }));
         setCustomers(typedCustomers);
-
+        setLastSyncTime(new Date());
       } else {
          const errorMessage = result.message || 'La API devolvió un error pero no especificó un mensaje.';
          console.error('Error al cargar clientes:', errorMessage);
@@ -132,24 +178,43 @@ export const useCustomers = () => {
     return customers.find(c => c.id === id);
   }, [customers]);
 
-  // A generic update function that sends the entire customer object
   const updateCustomer = async (updatedCustomer: Customer) => {
-    // Optimistic update
-    setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+    const customerWithRecalculatedStatuses = {
+        ...updatedCustomer,
+        strategies: updatedCustomer.strategies.map(strat => ({
+            ...strat,
+            status: recalculateStrategyStatus(strat)
+        }))
+    };
+    
+    setCustomers(prev => prev.map(c => c.id === customerWithRecalculatedStatuses.id ? customerWithRecalculatedStatuses : c));
     try {
-      await apiRequest('UPDATE_CUSTOMER', { customer: updatedCustomer });
+      await apiRequest('UPDATE_CUSTOMER', { customer: customerWithRecalculatedStatuses });
+      setLastSyncTime(new Date());
     } catch (error) {
-      // Revert on failure
       alert('No se pudieron guardar los cambios. Por favor, inténtelo de nuevo.');
       fetchCustomers();
     }
   };
 
-  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'pathwayToTitling' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable'>>) => {
+  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
-    let updatedCustomer = { ...customer, ...details, lastUpdate: new Date().toISOString() };
+    const tempUpdatedCustomer = { ...customer, ...details };
+
+    let completedSteps = 0;
+    if (tempUpdatedCustomer.hasTituloPropiedad) completedSteps++;
+    if (tempUpdatedCustomer.hasDeslinde) completedSteps++;
+    if (tempUpdatedCustomer.hasPermisoConstruccion) completedSteps++;
+    
+    const newPathwayPercentage = Math.round((completedSteps / 3) * 100);
+
+    let updatedCustomer = {
+        ...tempUpdatedCustomer,
+        pathwayToTitling: newPathwayPercentage,
+        lastUpdate: new Date().toISOString()
+    };
     
     if (details.legalStatus) {
         const groupMapping: Partial<Record<LegalStatus, string>> = {
@@ -373,7 +438,7 @@ export const useCustomers = () => {
         const result = await apiRequest('IMPORT_CUSTOMERS', { csvString });
         const count = result.data?.count ?? result.count ?? 'algunos';
         alert(`¡Se importaron con éxito ${count} nuevos clientes!`);
-        await fetchCustomers(); // Refresh the list
+        await fetchCustomers();
     } catch (error) {
         alert(`Error al importar clientes. Revise el formato del CSV y la consola para más detalles. Detalles: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     } finally {
@@ -382,10 +447,10 @@ export const useCustomers = () => {
   }, [fetchCustomers]);
 
   const deleteCustomer = useCallback(async (customerId: string) => {
-    // Optimistic delete
     setCustomers(prev => prev.filter(c => c.id !== customerId));
     try {
         await apiRequest('DELETE_CUSTOMER', { customerId });
+        setLastSyncTime(new Date());
     } catch (error) {
         alert('Error al eliminar el cliente. La lista se actualizará.');
         fetchCustomers();
@@ -396,6 +461,7 @@ export const useCustomers = () => {
     customers,
     loading,
     error,
+    lastSyncTime,
     fetchCustomers,
     getCustomerById, 
     updateCustomerDetails, 

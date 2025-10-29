@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { Customer, CustomerStrategy, Task } from '../types';
 import { LegalStatus, FinancialStatus, StatusCarpetaATC } from '../types';
@@ -7,11 +6,13 @@ import ProgressBar from './ProgressBar';
 import StrategyAccordion from './StrategyAccordion';
 import { TrashIcon } from './icons/TrashIcon';
 import InputGroup from './InputGroup';
+import { RESPONSABLES } from '../constants';
+
 
 interface CustomerDetailProps {
   customer: Customer;
   onBack: () => void;
-  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'pathwayToTitling' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta'>>) => void;
+  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => void;
   onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
   onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
   onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
@@ -41,7 +42,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
     if (isChecked) {
         const hasTAIStrategy = customer.strategies.some(s => s.strategyId === 'TAI');
         if (hasTAIStrategy) {
-            // Check if a similar task already exists to avoid duplicates
             const hasATCTask = customer.strategies
                 .find(s => s.strategyId === 'TAI')?.tasks
                 .some(t => t.description.includes('Asistencia Técnica'));
@@ -59,7 +59,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                 alert('Se ha agregado una tarea de seguimiento de ATC a la estrategia de Asistencia Técnica.');
             }
         } else {
-            alert('Para registrar tareas de ATC, primero debe activar la estrategia "Asistencia técnica + incentivos a la construcción" para este cliente.');
+            alert('Para registrar tareas de ATC, primero debe activar la estrategia "Devolución de asistencia técnica" para este cliente.');
         }
     }
   };
@@ -95,6 +95,21 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                 <DetailItem label="Contacto" value={customer.contact} />
                 <DetailItem label="Lotes" value={customer.lots} />
+                <DetailItem label="Responsable Asignado">
+                    <select
+                        id="responsable"
+                        value={customer.responsable || ''}
+                        onChange={(e) => onUpdateDetails(customer.id, { responsable: e.target.value })}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                    >
+                        <option value="">-- No Asignado --</option>
+                        {RESPONSABLES.map(email => (
+                            <option key={email} value={email}>
+                                {email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </option>
+                        ))}
+                    </select>
+                </DetailItem>
                 <DetailItem label="Manzana">
                   <input
                       id="manzana"
@@ -132,19 +147,85 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                         {Object.values(FinancialStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </DetailItem>
-                <DetailItem label="Camino a la Titulación (%)">
-                   <input
-                        type="number"
-                        id="pathwayToTitling"
-                        value={customer.pathwayToTitling}
-                        onChange={(e) => {
-                            const value = Math.max(0, Math.min(100, Number(e.target.value)));
-                            onUpdateDetails(customer.id, { pathwayToTitling: value });
-                        }}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
-                        min="0"
-                        max="100"
-                   />
+
+                <div className="sm:col-span-2 lg:col-span-3 mt-4 pt-4 border-t">
+                    <h4 className="text-md font-semibold text-gray-700 mb-2">Trámites Completados</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-6">
+                        <DetailItem label="Título de propiedad">
+                            <div className="flex items-center space-x-2 mt-2">
+                                <label className="text-sm">No</label>
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        id="hasTituloPropiedad"
+                                        className="sr-only"
+                                        checked={customer.hasTituloPropiedad}
+                                        onChange={(e) => onUpdateDetails(customer.id, { hasTituloPropiedad: e.target.checked })}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.hasTituloPropiedad ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { hasTituloPropiedad: !customer.hasTituloPropiedad })}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.hasTituloPropiedad ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                                <label className="text-sm">Sí</label>
+                            </div>
+                        </DetailItem>
+                        <DetailItem label="Deslinde">
+                            <div className="flex items-center space-x-2 mt-2">
+                                <label className="text-sm">No</label>
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        id="hasDeslinde"
+                                        className="sr-only"
+                                        checked={customer.hasDeslinde}
+                                        onChange={(e) => onUpdateDetails(customer.id, { hasDeslinde: e.target.checked })}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.hasDeslinde ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { hasDeslinde: !customer.hasDeslinde })}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.hasDeslinde ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                                <label className="text-sm">Sí</label>
+                            </div>
+                        </DetailItem>
+                        <DetailItem label="Permiso de construcción">
+                            <div className="flex items-center space-x-2 mt-2">
+                                <label className="text-sm">No</label>
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        id="hasPermisoConstruccion"
+                                        className="sr-only"
+                                        checked={customer.hasPermisoConstruccion}
+                                        onChange={(e) => onUpdateDetails(customer.id, { hasPermisoConstruccion: e.target.checked })}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.hasPermisoConstruccion ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { hasPermisoConstruccion: !customer.hasPermisoConstruccion })}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.hasPermisoConstruccion ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                                <label className="text-sm">Sí</label>
+                            </div>
+                        </DetailItem>
+                        <DetailItem label="Inició Construcción">
+                            <div className="flex items-center space-x-2 mt-2">
+                                <label className="text-sm">No</label>
+                                <div className="relative">
+                                    <input
+                                        type="checkbox"
+                                        id="startedConstruction"
+                                        className="sr-only"
+                                        checked={customer.startedConstruction}
+                                        onChange={(e) => onUpdateDetails(customer.id, { startedConstruction: e.target.checked })}
+                                    />
+                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.startedConstruction ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { startedConstruction: !customer.startedConstruction })}></div>
+                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.startedConstruction ? 'transform translate-x-4' : ''}`}></div>
+                                </div>
+                                <label className="text-sm">Sí</label>
+                            </div>
+                        </DetailItem>
+                    </div>
+                </div>
+
+                <DetailItem label="Camino a la construcción (%)">
+                    <div className="mt-2">
+                        <ProgressBar percentage={customer.pathwayToTitling} />
+                    </div>
                 </DetailItem>
                 <DetailItem label="Progreso Financiero (%)">
                      <input

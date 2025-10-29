@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { Customer, CustomerStrategy, Task } from '../types';
 import { StrategyStatus } from '../types';
@@ -46,25 +45,31 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
         }
     };
     
-    const potentialStrategyDetails = customer.potentialStrategies
-        .map(id => STRATEGIES.find(s => s.id === id))
-        .filter((s): s is NonNullable<typeof s> => s !== undefined);
+    const allPossibleStrategies = STRATEGIES.filter(s => {
+        if (s.id === 'TAI') {
+            return customer.contratoATC;
+        }
+        return true;
+    });
+
+    const potentialAndActiveIds = new Set([...customer.potentialStrategies, ...customer.strategies.map(s => s.strategyId)]);
+    
+    const relevantStrategies = STRATEGIES.filter(s => potentialAndActiveIds.has(s.id));
 
 
-    if (potentialStrategyDetails.length === 0) {
-        return <p className="text-center text-gray-500 italic py-4">No hay estrategias potenciales asignadas. Puede asignarlas desde la tabla principal de clientes.</p>;
+    if (relevantStrategies.length === 0) {
+        return <p className="text-center text-gray-500 italic py-4">No hay estrategias potenciales o activas para este cliente. Puede asignarlas desde la tabla principal.</p>;
     }
 
 
     return (
         <div className="space-y-3">
-            {potentialStrategyDetails.map((strategyInfo) => {
+            {relevantStrategies.map((strategyInfo) => {
                 const custStrategy = customer.strategies.find(cs => cs.strategyId === strategyInfo.id);
 
                 if (!custStrategy) {
                     const isTAI = strategyInfo.id === 'TAI';
                     const canActivate = isTAI ? customer.contratoATC : true;
-                    // This is a potential strategy that has not been activated yet.
                     return (
                         <div key={strategyInfo.id} className="border border-dashed border-gray-300 rounded-lg p-4 flex justify-between items-center bg-gray-50 hover:bg-gray-100 transition-colors">
                             <div>
@@ -148,24 +153,29 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
                                 ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700">Descripción</label>
-                                        <p className="text-sm text-gray-600 mt-1">{strategyInfo.description}</p>
-                                    </div>
-                                    <div>
-                                        <label htmlFor={`status-${strategyInfo.id}`} className="block text-sm font-medium text-gray-700">Estatus</label>
-                                        <select
-                                            id={`status-${strategyInfo.id}`}
-                                            value={custStrategy.status}
-                                            onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { status: e.target.value as StrategyStatus })}
-                                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
-                                        >
-                                            {Object.values(StrategyStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                                        </select>
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Fecha de última actualización: {new Date(custStrategy.lastUpdate).toLocaleString()}
-                                        </p>
-                                    </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Estatus (Automático)</label>
+                                            <p className="mt-1 text-sm font-semibold text-gray-900 bg-gray-200 px-3 py-2 rounded-md">{custStrategy.status}</p>
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Última actualización: {new Date(custStrategy.lastUpdate).toLocaleString()}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label htmlFor={`status-override-${strategyInfo.id}`} className="block text-sm font-medium text-gray-700">Acción Manual</label>
+                                            <select
+                                                id={`status-override-${strategyInfo.id}`}
+                                                value={custStrategy.status}
+                                                onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { status: e.target.value as StrategyStatus })}
+                                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                                            >
+                                                <option value={custStrategy.status}>-- {custStrategy.status} --</option>
+                                                <option value={StrategyStatus.OnHold}>Poner en Pausa</option>
+                                                <option value={StrategyStatus.Rejected}>Marcar como Rechazado</option>
+                                                {(custStrategy.status === StrategyStatus.OnHold || custStrategy.status === StrategyStatus.Rejected) &&
+                                                    <option value={StrategyStatus.InProgress}>Reactivar / Quitar Pausa</option>
+                                                }
+                                            </select>
+                                        </div>
                                     </div>
 
                                     {specificFields && specificFields.length > 0 && (

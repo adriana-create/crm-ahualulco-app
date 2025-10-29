@@ -118,10 +118,14 @@ export interface Customer {
   lastUpdate: string; 
   strategies: CustomerStrategy[];
   potentialStrategies: string[];
+  hasTituloPropiedad: boolean;
+  hasDeslinde: boolean;
+  hasPermisoConstruccion: boolean;
   modificacionLote: boolean;
   contratoATC: boolean;
   pagoATC: boolean;
   statusCarpetaATC: StatusCarpetaATC;
   recordatorioEntregaCarpeta: string; // YYYY-MM-DD
   responsable: string;
+  startedConstruction: boolean;
 }

@@ -19,6 +19,7 @@ function App() {
     deleteCustomer,
     loading,
     error,
+    lastSyncTime,
     fetchCustomers
   } = useCustomers();
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -42,7 +43,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
+      <Header 
+        lastSyncTime={lastSyncTime}
+        loading={loading}
+        onRefresh={fetchCustomers}
+      />
       <main className="container mx-auto p-4 md:p-8">
         {selectedCustomer ? (
           <CustomerDetail
@@ -50,6 +55,7 @@ function App() {
             onBack={handleBack}
             onUpdateDetails={updateCustomerDetails}
             onUpdateStrategy={updateCustomerStrategy}
+            // FIX: Pass the 'updateTask' function from the hook to the 'onUpdateTask' prop.
             onUpdateTask={updateTask}
             onAddTask={addTask}
             onUpdateStrategyCustomData={updateCustomerStrategyCustomData}

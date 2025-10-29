@@ -44,7 +44,7 @@ const financialStatusColorMap: Record<FinancialStatus, string> = {
 const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onDeleteCustomer, loading, error, onRetry, onUpdateDetails }) => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [filters, setFilters] = useState({ responsable: '', group: '', activeStrategy: '' });
-  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys | null; direction: 'ascending' | 'descending' }>({ key: 'firstName', direction: 'ascending' });
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKeys | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -66,7 +66,6 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     // Sorting
     if (sortConfig.key) {
         sortableCustomers.sort((a, b) => {
-            // Ensure values are strings for comparison
             const aValue = String(a[sortConfig.key!] || '').toLowerCase();
             const bValue = String(b[sortConfig.key!] || '').toLowerCase();
 
@@ -87,6 +86,9 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     let direction: 'ascending' | 'descending' = 'ascending';
     if (sortConfig.key === key && sortConfig.direction === 'ascending') {
         direction = 'descending';
+    } else if (sortConfig.key === key && sortConfig.direction === 'descending') {
+        setSortConfig({ key: null, direction: 'ascending'});
+        return;
     }
     setSortConfig({ key, direction });
   };
@@ -409,7 +411,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                 Estatus Legal (Reciente)
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Camino a la Titulación
+                Camino a la construcción
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                 Estrategias Potenciales
