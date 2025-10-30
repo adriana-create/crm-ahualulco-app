@@ -12,7 +12,7 @@ import { RESPONSABLES } from '../constants';
 interface CustomerDetailProps {
   customer: Customer;
   onBack: () => void;
-  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => void;
+  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => void;
   onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
   onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
   onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
@@ -225,23 +225,6 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                 <DetailItem label="Camino a la construcción (%)">
                     <div className="mt-2">
                         <ProgressBar percentage={customer.pathwayToTitling} />
-                    </div>
-                </DetailItem>
-                <DetailItem label="Progreso Financiero (%)">
-                     <input
-                        type="number"
-                        id="financialProgress"
-                        value={customer.financialProgress}
-                        onChange={(e) => {
-                            const value = Math.max(0, Math.min(100, Number(e.target.value)));
-                            onUpdateDetails(customer.id, { financialProgress: value });
-                        }}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
-                        min="0"
-                        max="100"
-                   />
-                    <div className="mt-2">
-                        <ProgressBar percentage={customer.financialProgress} />
                     </div>
                 </DetailItem>
                 <div className="sm:col-span-2 lg:col-span-3">

@@ -93,11 +93,15 @@ export interface DirectPromotionFIData {
 
 export interface CustomerStrategy {
   strategyId: string;
+  offered?: boolean;
   accepted: boolean;
   status: StrategyStatus;
   lastUpdate: string;
   tasks: Task[];
   customData?: Record<string, any>;
+  lastOfferContactDate?: string;
+  offerContactResponsible?: string;
+  offerComments?: string;
 }
 
 export interface Customer {
@@ -114,7 +118,6 @@ export interface Customer {
   financialStatus: FinancialStatus;
   motivation: string;
   group: string;
-  financialProgress: number;
   lastUpdate: string; 
   strategies: CustomerStrategy[];
   potentialStrategies: string[];

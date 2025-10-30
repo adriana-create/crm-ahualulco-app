@@ -218,9 +218,16 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     return (
       filteredAndSortedCustomers.map((customer, index) => {
         const acceptedStrategies = customer.strategies.filter(s => s.accepted);
-        
+        const rowClass = customer.modificacionLote ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-100';
+        const rowTitle = customer.modificacionLote ? 'Este cliente tiene una modificación en la superficie del lote' : '';
+
         return (
-          <tr key={customer.id} onClick={() => onSelectCustomer(customer.id)} className="hover:bg-gray-100 cursor-pointer transition-colors duration-200">
+          <tr 
+            key={customer.id} 
+            onClick={() => onSelectCustomer(customer.id)} 
+            className={`cursor-pointer transition-colors duration-200 ${rowClass}`}
+            title={rowTitle}
+          >
             <td className="px-6 py-4 whitespace-nowrap align-top text-sm text-gray-500">{index + 1}</td>
             <td className="px-6 py-4 whitespace-nowrap align-top">
               <div className="text-sm font-medium text-gray-900">{`${customer.firstName} ${customer.paternalLastName}`}</div>
@@ -414,7 +421,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                 Camino a la construcción
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
-                Estrategias Potenciales
+                Estrategias Ofertadas / Potenciales
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                 <div className="flex items-center gap-2 select-none">

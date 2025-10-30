@@ -135,12 +135,18 @@ export const useCustomers = () => {
         const typedCustomers = result.data.map((c: any) => ({
             ...c,
             strategies: Array.isArray(c.strategies) 
-                ? c.strategies.map((s: any) => ({ ...s, tasks: Array.isArray(s.tasks) ? s.tasks : [] })) 
+                ? c.strategies.map((s: any) => ({ 
+                    ...s, 
+                    tasks: Array.isArray(s.tasks) ? s.tasks : [],
+                    lastOfferContactDate: s.lastOfferContactDate || '',
+                    offerContactResponsible: s.offerContactResponsible || '',
+                    offerComments: s.offerComments || '',
+                    offered: !!s.offered,
+                })) 
                 : [],
             potentialStrategies: Array.isArray(c.potentialStrategies) ? c.potentialStrategies : [],
             lots: parseInt(c.lots, 10) || 0,
             pathwayToTitling: parseInt(c.pathwayToTitling, 10) || 0,
-            financialProgress: parseInt(c.financialProgress, 10) || 0,
             hasTituloPropiedad: !!c.hasTituloPropiedad,
             hasDeslinde: !!c.hasDeslinde,
             hasPermisoConstruccion: !!c.hasPermisoConstruccion,
@@ -197,7 +203,7 @@ export const useCustomers = () => {
     }
   };
 
-  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'financialProgress' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => {
+  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
@@ -410,11 +416,15 @@ export const useCustomers = () => {
 
     const newStrategy: CustomerStrategy = {
         strategyId: strategyId,
+        offered: false,
         accepted: false,
         status: StrategyStatus.NotStarted,
         lastUpdate: new Date().toISOString(),
         tasks: [],
         customData,
+        lastOfferContactDate: '',
+        offerContactResponsible: '',
+        offerComments: '',
     };
     
     const updatedCustomer = {
