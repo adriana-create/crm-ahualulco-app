@@ -16,7 +16,7 @@ interface StrategyAccordionProps {
   customer: Customer;
   onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
   onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
-  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
+  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>, detailsToMerge?: Partial<Customer>) => void;
   onUpdateStrategyCustomData: (customerId: string, strategyId: string, key: string, value: string | number | boolean) => void;
   onAddStrategy: (customerId: string, strategyId: string) => void;
 }

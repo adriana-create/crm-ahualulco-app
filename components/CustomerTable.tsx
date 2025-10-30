@@ -43,7 +43,7 @@ const financialStatusColorMap: Record<FinancialStatus, string> = {
 
 const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onDeleteCustomer, loading, error, onRetry, onUpdateDetails }) => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ responsable: '', group: '', activeStrategy: '' });
+  const [filters, setFilters] = useState({ name: '', responsable: '', group: '', activeStrategy: '', legalStatus: '', potentialStrategy: '' });
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -55,12 +55,19 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
 
     // Filtering
     sortableCustomers = sortableCustomers.filter(customer => {
+        const nameMatch = filters.name
+            ? `${customer.firstName} ${customer.paternalLastName} ${customer.maternalLastName}`.toLowerCase().includes(filters.name.toLowerCase())
+            : true;
         const responsableMatch = filters.responsable ? customer.responsable === filters.responsable : true;
         const groupMatch = filters.group ? customer.group === filters.group : true;
         const strategyMatch = filters.activeStrategy 
             ? customer.strategies.some(s => s.strategyId === filters.activeStrategy && s.accepted) 
             : true;
-        return responsableMatch && groupMatch && strategyMatch;
+        const legalStatusMatch = filters.legalStatus ? customer.legalStatus === (filters.legalStatus as LegalStatus) : true;
+        const potentialStrategyMatch = filters.potentialStrategy 
+            ? customer.potentialStrategies.includes(filters.potentialStrategy)
+            : true;
+        return nameMatch && responsableMatch && groupMatch && strategyMatch && legalStatusMatch && potentialStrategyMatch;
     });
 
     // Sorting
@@ -131,21 +138,6 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     }
   }
   
-  const SortableHeader: React.FC<{ sortKey: SortableKeys; title: string; className?: string }> = ({ sortKey, title, className }) => (
-    <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className || ''}`}>
-      <div 
-        className="flex items-center gap-2 cursor-pointer select-none"
-        onClick={() => requestSort(sortKey)}
-      >
-        <span>{title}</span>
-        {sortConfig.key === sortKey && (
-          sortConfig.direction === 'ascending' ? <ArrowUpIcon className="w-4 h-4 text-gray-600" /> : <ArrowDownIcon className="w-4 h-4 text-gray-600" />
-        )}
-      </div>
-    </th>
-  );
-
-
   const renderTableContent = () => {
     if (loading) {
       return (
@@ -368,15 +360,32 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                 Mostrando <strong>{filteredAndSortedCustomers.length}</strong> de <strong>{customers.length}</strong> clientes.
             </div>
         )}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
                 #
               </th>
-              <SortableHeader sortKey="firstName" title="Nombre" />
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-52">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[24rem]">
+                <div 
+                    className="flex items-center gap-2 cursor-pointer select-none"
+                    onClick={() => requestSort('firstName')}
+                >
+                    <span>Nombre</span>
+                    {sortConfig.key === 'firstName' && (
+                    sortConfig.direction === 'ascending' ? <ArrowUpIcon className="w-4 h-4 text-gray-600" /> : <ArrowDownIcon className="w-4 h-4 text-gray-600" />
+                    )}
+                </div>
+                 <input
+                    type="text"
+                    placeholder="Buscar..."
+                    value={filters.name}
+                    onChange={(e) => handleFilterChange('name', e.target.value)}
+                    className="w-full text-xs mt-1 p-1 rounded border-gray-300"
+                />
+              </th>
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-52">
                 <div 
                     className="flex items-center gap-2 cursor-pointer select-none"
                     onClick={() => requestSort('responsable')}
@@ -395,7 +404,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                     {RESPONSABLES.map(r => <option key={r} value={r}>{r.split('@')[0]}</option>)}
                 </select>
               </th>
-               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+               <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                 <div 
                     className="flex items-center gap-2 cursor-pointer select-none"
                     onClick={() => requestSort('group')}
@@ -414,16 +423,32 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                     {uniqueGroups.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
                 Estatus Legal (Reciente)
+                <select
+                    value={filters.legalStatus}
+                    onChange={(e) => handleFilterChange('legalStatus', e.target.value)}
+                    className="w-full text-xs mt-1 p-1 rounded border-gray-300"
+                >
+                    <option value="">Todos</option>
+                    {Object.values(LegalStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Camino a la construcción
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                 Estrategias Ofertadas / Potenciales
+                <select
+                    value={filters.potentialStrategy}
+                    onChange={(e) => handleFilterChange('potentialStrategy', e.target.value)}
+                    className="w-full text-xs mt-1 p-1 rounded border-gray-300"
+                >
+                    <option value="">Todas</option>
+                    {STRATEGIES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[250px]">
                 <div className="flex items-center gap-2 select-none">
                     <span>Estrategias Activas</span>
                 </div>
@@ -436,7 +461,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                     {STRATEGIES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Acciones
               </th>
             </tr>

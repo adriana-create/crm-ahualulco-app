@@ -37,7 +37,7 @@ const DirectPromotionFIForm: React.FC<DPFIFormProps> = ({ customer, customerStra
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
                 <InputGroup
                     label="Cita para información" id="citaInformacion" type="date"
                     value={dpfiData.citaInformacion || ''}
@@ -47,11 +47,6 @@ const DirectPromotionFIForm: React.FC<DPFIFormProps> = ({ customer, customerStra
                     label="Fecha Último Contacto" id="fechaUltimoContacto" type="date"
                     value={dpfiData.fechaUltimoContacto || ''}
                     onChange={(e) => handleUpdate({ fechaUltimoContacto: e.target.value })}
-                />
-                 <InputGroup
-                    label="Responsable" id="responsable"
-                    value={dpfiData.responsable || ''}
-                    onChange={(e) => handleUpdate({ responsable: e.target.value })}
                 />
                  <InputGroup
                     label="Institución" id="institucion"

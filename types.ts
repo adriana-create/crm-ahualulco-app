@@ -71,7 +71,6 @@ export interface TailoredLegalSupportData {
   seguimientoRealizado: boolean;
   tramiteAnterior: string;
   siguienteTramite: string;
-  responsable: string;
   observaciones: string;
   enviarRecordatorio: boolean;
 }
@@ -83,7 +82,6 @@ export interface DirectPromotionFIData {
   recibioAsesoria: boolean;
   fechaUltimoContacto: string; // YYYY-MM-DD
   seguimiento: boolean;
-  responsable: string;
   logroCredito: boolean;
   institucion: string;
   montoCredito: number;
@@ -131,4 +129,8 @@ export interface Customer {
   recordatorioEntregaCarpeta: string; // YYYY-MM-DD
   responsable: string;
   startedConstruction: boolean;
+  atcAmount?: number;
+  atcFolderDeliveryDate?: string; // YYYY-MM-DD
+  atcPrototype?: number;
+  atcPrototypeType?: 'Moderno' | 'Tradicional' | '';
 }

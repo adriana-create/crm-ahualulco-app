@@ -12,10 +12,10 @@ import { RESPONSABLES } from '../constants';
 interface CustomerDetailProps {
   customer: Customer;
   onBack: () => void;
-  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => void;
+  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => void;
   onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
   onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
-  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>) => void;
+  onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>, detailsToMerge?: Partial<Customer>) => void;
   onUpdateStrategyCustomData: (customerId: string, strategyId: string, key: string, value: string | number | boolean) => void;
   onAddStrategy: (customerId: string, strategyId: string) => void;
   onDeleteCustomer: (customerId: string) => void;
@@ -37,8 +37,7 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
   };
   
   const handleContratoATCChange = (isChecked: boolean) => {
-    onUpdateDetails(customer.id, { contratoATC: isChecked });
-
+    let taskAdded = false;
     if (isChecked) {
         const hasTAIStrategy = customer.strategies.some(s => s.strategyId === 'TAI');
         if (hasTAIStrategy) {
@@ -55,12 +54,17 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                     description: 'Realizar visita inicial de Asistencia Técnica',
                     dueDate: dueDate,
                     assignedTo: 'Equipo Técnico'
-                });
+                }, { contratoATC: isChecked });
                 alert('Se ha agregado una tarea de seguimiento de ATC a la estrategia de Asistencia Técnica.');
+                taskAdded = true;
             }
         } else {
             alert('Para registrar tareas de ATC, primero debe activar la estrategia "Devolución de asistencia técnica" para este cliente.');
         }
+    }
+    
+    if (!taskAdded) {
+        onUpdateDetails(customer.id, { contratoATC: isChecked });
     }
   };
 
@@ -254,6 +258,18 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                         <label className="text-sm">Sí</label>
                     </div>
                 </DetailItem>
+                <DetailItem label="Última Actualización" value={new Date(customer.lastUpdate).toLocaleString()} />
+            </dl>
+        </div>
+      </div>
+
+      <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-gray-200">
+            <h3 className="text-xl font-semibold text-gray-800">Asistencia Técnica</h3>
+            <p className="text-gray-500 mt-1">Gestionar el proceso de Asistencia Técnica para Construcción (ATC).</p>
+        </div>
+        <div className="p-6">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
                 <DetailItem label="Contrató Servicio de ATC">
                     <div className="flex items-center space-x-2 mt-2">
                         <label className="text-sm">No</label>
@@ -271,54 +287,88 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                         <label className="text-sm">Sí</label>
                     </div>
                 </DetailItem>
-                {customer.contratoATC && (
-                    <>
-                        <DetailItem label="Pagó ATC">
-                            <div className="flex items-center space-x-2 mt-2">
-                                <label className="text-sm">No</label>
-                                <div className="relative">
-                                    <input
-                                        type="checkbox"
-                                        id="pagoATC"
-                                        className="sr-only"
-                                        checked={customer.pagoATC}
-                                        onChange={(e) => onUpdateDetails(customer.id, { pagoATC: e.target.checked })}
-                                    />
-                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.pagoATC ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { pagoATC: !customer.pagoATC })}></div>
-                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.pagoATC ? 'transform translate-x-4' : ''}`}></div>
-                                </div>
-                                <label className="text-sm">Sí</label>
-                            </div>
-                        </DetailItem>
-                        <DetailItem label="Status de Carpeta">
-                           <select
-                                id="statusCarpetaATC"
-                                value={customer.statusCarpetaATC}
-                                onChange={(e) => onUpdateDetails(customer.id, { statusCarpetaATC: e.target.value as StatusCarpetaATC })}
-                                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
-                            >
-                                {Object.values(StatusCarpetaATC).map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                        </DetailItem>
-                        <DetailItem label="Recordatorio entrega de carpeta">
-                             <input
-                                type="date"
-                                id="recordatorioEntregaCarpeta"
-                                value={customer.recordatorioEntregaCarpeta}
-                                onChange={(e) => onUpdateDetails(customer.id, { recordatorioEntregaCarpeta: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm"
-                           />
-                        </DetailItem>
-                    </>
-                )}
-                <DetailItem label="Última Actualización" value={new Date(customer.lastUpdate).toLocaleString()} />
             </dl>
+            {customer.contratoATC && (
+                <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 mt-6 pt-6 border-t">
+                    <DetailItem label="Pagó ATC">
+                        <div className="flex items-center space-x-2 mt-2">
+                            <label className="text-sm">No</label>
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    id="pagoATC"
+                                    className="sr-only"
+                                    checked={customer.pagoATC}
+                                    onChange={(e) => onUpdateDetails(customer.id, { pagoATC: e.target.checked })}
+                                />
+                                <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.pagoATC ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { pagoATC: !customer.pagoATC })}></div>
+                                <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.pagoATC ? 'transform translate-x-4' : ''}`}></div>
+                            </div>
+                            <label className="text-sm">Sí</label>
+                        </div>
+                    </DetailItem>
+                    <InputGroup
+                        label="Cantidad ($)"
+                        id="atcAmount"
+                        type="number"
+                        value={customer.atcAmount || ''}
+                        onChange={(e) => onUpdateDetails(customer.id, { atcAmount: parseFloat(e.target.value) || 0 })}
+                    />
+                    <DetailItem label="Status de Carpeta">
+                        <select
+                            id="statusCarpetaATC"
+                            value={customer.statusCarpetaATC}
+                            onChange={(e) => onUpdateDetails(customer.id, { statusCarpetaATC: e.target.value as StatusCarpetaATC })}
+                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                        >
+                            {Object.values(StatusCarpetaATC).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </DetailItem>
+                    <InputGroup
+                        label="Fecha de entrega de carpeta"
+                        id="atcFolderDeliveryDate"
+                        type="date"
+                        value={customer.atcFolderDeliveryDate || ''}
+                        onChange={(e) => onUpdateDetails(customer.id, { atcFolderDeliveryDate: e.target.value })}
+                    />
+                    <InputGroup
+                        label="Recordatorio entrega de carpeta"
+                        id="recordatorioEntregaCarpeta"
+                        type="date"
+                        value={customer.recordatorioEntregaCarpeta}
+                        onChange={(e) => onUpdateDetails(customer.id, { recordatorioEntregaCarpeta: e.target.value })}
+                    />
+                     <DetailItem label="Prototipo seleccionado">
+                        <select
+                            id="atcPrototype"
+                            value={customer.atcPrototype || ''}
+                            onChange={(e) => onUpdateDetails(customer.id, { atcPrototype: parseInt(e.target.value, 10) })}
+                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                        >
+                            <option value="">-- Seleccionar --</option>
+                            {[...Array(8).keys()].map(i => <option key={i+1} value={i+1}>{i+1}</option>)}
+                        </select>
+                    </DetailItem>
+                    <DetailItem label="Tipo">
+                        <select
+                            id="atcPrototypeType"
+                            value={customer.atcPrototypeType || ''}
+                            onChange={(e) => onUpdateDetails(customer.id, { atcPrototypeType: e.target.value as 'Moderno' | 'Tradicional' })}
+                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                        >
+                            <option value="">-- Seleccionar --</option>
+                            <option value="Moderno">Moderno</option>
+                            <option value="Tradicional">Tradicional</option>
+                        </select>
+                    </DetailItem>
+                </dl>
+            )}
         </div>
       </div>
       
       <div className="bg-white shadow-lg rounded-xl overflow-hidden">
         <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl font-semibold text-gray-800">Estrategias y Tareas</h3>
+            <h3 className="text-xl font-semibold text-gray-800">Estrategias para la Construcción</h3>
             <p className="text-gray-500 mt-1">Gestionar la participación y las acciones de seguimiento para cada estrategia.</p>
         </div>
         <div className="p-6 space-y-4">

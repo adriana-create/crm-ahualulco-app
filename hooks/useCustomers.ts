@@ -98,7 +98,7 @@ const recalculateStrategyStatus = (strategy: CustomerStrategy): StrategyStatus =
         }
     } else if (strategyId === 'TLS') {
         const data = customData as TailoredLegalSupportData;
-        if (data && (data.fechaUltimoContacto || data.tramiteActual || data.responsable)) {
+        if (data && (data.fechaUltimoContacto || data.tramiteActual)) {
             isInProgress = true;
         }
     } else if (strategyId === 'DPFI') {
@@ -157,6 +157,10 @@ export const useCustomers = () => {
             recordatorioEntregaCarpeta: c.recordatorioEntregaCarpeta || '',
             responsable: c.responsable || '',
             startedConstruction: !!c.startedConstruction,
+            atcAmount: c.atcAmount ? parseFloat(c.atcAmount) : 0,
+            atcFolderDeliveryDate: c.atcFolderDeliveryDate || '',
+            atcPrototype: c.atcPrototype ? parseInt(c.atcPrototype, 10) : undefined,
+            atcPrototypeType: c.atcPrototypeType || '',
         }));
         setCustomers(typedCustomers);
         setLastSyncTime(new Date());
@@ -203,7 +207,7 @@ export const useCustomers = () => {
     }
   };
 
-  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion'>>) => {
+  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
@@ -280,7 +284,7 @@ export const useCustomers = () => {
      updateCustomer(updatedCustomer);
   }, [customers, getCustomerById]);
 
-  const addTask = useCallback((customerId: string, strategyId:string, task: Omit<Task, 'id' | 'isCompleted'>) => {
+  const addTask = useCallback((customerId: string, strategyId:string, task: Omit<Task, 'id' | 'isCompleted'>, detailsToMerge: Partial<Customer> = {}) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
     
@@ -303,6 +307,7 @@ export const useCustomers = () => {
 
     const updatedCustomer = {
         ...customer,
+        ...detailsToMerge,
         strategies: newStrategies,
         lastUpdate: new Date().toISOString(),
     };
@@ -386,7 +391,6 @@ export const useCustomers = () => {
             seguimientoRealizado: false,
             tramiteAnterior: '',
             siguienteTramite: '',
-            responsable: '',
             observaciones: '',
             enviarRecordatorio: false
         };
@@ -398,7 +402,6 @@ export const useCustomers = () => {
             recibioAsesoria: false,
             fechaUltimoContacto: '',
             seguimiento: false,
-            responsable: '',
             logroCredito: false,
             institucion: '',
             montoCredito: 0,

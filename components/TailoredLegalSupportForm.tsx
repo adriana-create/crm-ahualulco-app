@@ -59,7 +59,7 @@ const TailoredLegalSupportForm: React.FC<TLSFormProps> = ({ customer, customerSt
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
                 <InputGroup label="Trámite Actual (Asesorado)" id="tramiteActual">
                      <select
                         id="tramiteActual"
@@ -82,11 +82,6 @@ const TailoredLegalSupportForm: React.FC<TLSFormProps> = ({ customer, customerSt
                         {LEGAL_STATUS_OPTIONS.map(op => <option key={op} value={op}>{op}</option>)}
                     </select>
                 </InputGroup>
-                 <InputGroup
-                    label="Responsable (Email para recordatorios)" id="responsable" type="email"
-                    value={tlsData.responsable || ''}
-                    onChange={(e) => handleUpdate({ responsable: e.target.value })}
-                />
                 <InputGroup
                     label="Trámite anterior (completado)" id="tramiteAnterior"
                     value={tlsData.tramiteAnterior || ''}
