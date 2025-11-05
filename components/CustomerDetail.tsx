@@ -1,24 +1,26 @@
 import React from 'react';
-import type { Customer, CustomerStrategy, Task } from '../types';
-import { LegalStatus, FinancialStatus, StatusCarpetaATC } from '../types';
+import type { Customer, CustomerStrategy, Task, BasicInfo } from '../types';
+import { LegalStatus, TriStateStatus, StatusCarpetaATC } from '../types';
 import { ChevronLeftIcon } from './icons/ChevronLeftIcon';
 import ProgressBar from './ProgressBar';
 import StrategyAccordion from './StrategyAccordion';
 import { TrashIcon } from './icons/TrashIcon';
 import InputGroup from './InputGroup';
+import BasicInfoSheet from './BasicInfoSheet';
 import { RESPONSABLES } from '../constants';
 
 
 interface CustomerDetailProps {
   customer: Customer;
   onBack: () => void;
-  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => void;
+  onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'hasCredit' | 'hasSavings' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => void;
   onUpdateStrategy: (customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => void;
   onUpdateTask: (customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => void;
   onAddTask: (customerId: string, strategyId: string, task: Omit<Task, 'id'|'isCompleted'>, detailsToMerge?: Partial<Customer>) => void;
   onUpdateStrategyCustomData: (customerId: string, strategyId: string, key: string, value: string | number | boolean) => void;
   onAddStrategy: (customerId: string, strategyId: string) => void;
   onDeleteCustomer: (customerId: string) => void;
+  onUpdateBasicInfo: (customerId: string, updatedInfo: Partial<BasicInfo>) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number; children?: React.ReactNode }> = ({ label, value, children }) => (
@@ -28,7 +30,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number; children?: 
     </div>
 );
 
-const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdateDetails, onUpdateStrategy, onUpdateTask, onAddTask, onUpdateStrategyCustomData, onAddStrategy, onDeleteCustomer }) => {
+const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpdateDetails, onUpdateStrategy, onUpdateTask, onAddTask, onUpdateStrategyCustomData, onAddStrategy, onDeleteCustomer, onUpdateBasicInfo }) => {
   
   const handleDelete = () => {
     if (window.confirm('¿Está seguro de que desea eliminar este cliente? Esta acción no se puede deshacer.')) {
@@ -82,7 +84,13 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
         <div className="p-6 border-b border-gray-200 bg-header-bg text-white flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-bold">{`${customer.firstName} ${customer.paternalLastName} ${customer.maternalLastName}`}</h2>
-            <p className="text-gray-300 mt-1">{customer.id}</p>
+            <div className="flex items-center gap-4 mt-1">
+                <p className="text-gray-300 font-mono">{customer.id}</p>
+                <span className="text-gray-500">|</span>
+                <p className="text-xs text-gray-400">
+                    Última Actualización: {new Date(customer.lastUpdate).toLocaleString()}
+                </p>
+            </div>
           </div>
           <button
             onClick={handleDelete}
@@ -141,16 +149,46 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                       {Object.values(LegalStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </DetailItem>
-                <DetailItem label="Estatus Financiero">
+                <DetailItem label="Tiene Crédito">
                    <select
-                        id="financialStatus"
-                        value={customer.financialStatus}
-                        onChange={(e) => onUpdateDetails(customer.id, { financialStatus: e.target.value as FinancialStatus })}
+                        id="hasCredit"
+                        value={customer.hasCredit}
+                        onChange={(e) => onUpdateDetails(customer.id, { hasCredit: e.target.value as TriStateStatus })}
                         className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
                     >
-                        {Object.values(FinancialStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        {Object.values(TriStateStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                 </DetailItem>
+                <DetailItem label="Tiene Ahorros">
+                   <select
+                        id="hasSavings"
+                        value={customer.hasSavings}
+                        onChange={(e) => onUpdateDetails(customer.id, { hasSavings: e.target.value as TriStateStatus })}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
+                    >
+                        {Object.values(TriStateStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </DetailItem>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <dt className="text-sm font-bold text-status-red">ALERTA: Modificación en superficie de lote</dt>
+                    <dd className="mt-1 text-sm text-gray-900">
+                        <div className="flex items-center space-x-2 mt-2">
+                            <label className="text-sm">No</label>
+                            <div className="relative">
+                                <input
+                                    type="checkbox"
+                                    id="modificacionLote"
+                                    className="sr-only"
+                                    checked={customer.modificacionLote}
+                                    onChange={(e) => onUpdateDetails(customer.id, { modificacionLote: e.target.checked })}
+                                />
+                                <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.modificacionLote ? 'bg-status-red' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { modificacionLote: !customer.modificacionLote })}></div>
+                                <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.modificacionLote ? 'transform translate-x-4' : ''}`}></div>
+                            </div>
+                            <label className="text-sm">Sí</label>
+                        </div>
+                    </dd>
+                </div>
 
                 <div className="sm:col-span-2 lg:col-span-3 mt-4 pt-4 border-t">
                     <h4 className="text-md font-semibold text-gray-700 mb-2">Trámites Completados</h4>
@@ -207,20 +245,17 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                             </div>
                         </DetailItem>
                         <DetailItem label="Inició Construcción">
-                            <div className="flex items-center space-x-2 mt-2">
-                                <label className="text-sm">No</label>
-                                <div className="relative">
-                                    <input
-                                        type="checkbox"
-                                        id="startedConstruction"
-                                        className="sr-only"
-                                        checked={customer.startedConstruction}
-                                        onChange={(e) => onUpdateDetails(customer.id, { startedConstruction: e.target.checked })}
-                                    />
-                                    <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.startedConstruction ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { startedConstruction: !customer.startedConstruction })}></div>
-                                    <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.startedConstruction ? 'transform translate-x-4' : ''}`}></div>
-                                </div>
-                                <label className="text-sm">Sí</label>
+                            <div className="flex items-center h-full mt-2">
+                                <input
+                                    type="checkbox"
+                                    id="startedConstruction"
+                                    checked={customer.startedConstruction}
+                                    onChange={(e) => onUpdateDetails(customer.id, { startedConstruction: e.target.checked })}
+                                    className="h-5 w-5 text-brand-primary focus:ring-brand-light border-gray-300 rounded"
+                                />
+                                <label htmlFor="startedConstruction" className="ml-2 text-sm text-gray-700">
+                                    Marcar como iniciado
+                                </label>
                             </div>
                         </DetailItem>
                     </div>
@@ -241,27 +276,14 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
                         onChange={(e) => onUpdateDetails(customer.id, { motivation: e.target.value })}
                     />
                 </div>
-                <DetailItem label="Modificación en superficie de lote">
-                    <div className="flex items-center space-x-2 mt-2">
-                        <label className="text-sm">No</label>
-                        <div className="relative">
-                            <input
-                                type="checkbox"
-                                id="modificacionLote"
-                                className="sr-only"
-                                checked={customer.modificacionLote}
-                                onChange={(e) => onUpdateDetails(customer.id, { modificacionLote: e.target.checked })}
-                            />
-                            <div className={`block w-10 h-6 rounded-full cursor-pointer ${customer.modificacionLote ? 'bg-brand-primary' : 'bg-gray-300'}`} onClick={() => onUpdateDetails(customer.id, { modificacionLote: !customer.modificacionLote })}></div>
-                            <div className={`dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${customer.modificacionLote ? 'transform translate-x-4' : ''}`}></div>
-                        </div>
-                        <label className="text-sm">Sí</label>
-                    </div>
-                </DetailItem>
-                <DetailItem label="Última Actualización" value={new Date(customer.lastUpdate).toLocaleString()} />
             </dl>
         </div>
       </div>
+
+      <BasicInfoSheet 
+        customer={customer}
+        onUpdate={(updatedInfo) => onUpdateBasicInfo(customer.id, updatedInfo)}
+      />
 
       <div className="bg-white shadow-lg rounded-xl overflow-hidden">
         <div className="p-6 border-b border-gray-200">

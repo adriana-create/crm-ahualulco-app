@@ -5,11 +5,10 @@ export enum LegalStatus {
   NoPayment = 'No ha realizado pago de impuestos y derechos',
 }
 
-export enum FinancialStatus {
-  ActiveCredit = 'Crédito Vigente',
-  NoCredit = 'Sin Crédito',
-  PaidOff = 'Pagado',
-  Default = 'En Mora',
+export enum TriStateStatus {
+  Yes = 'Sí',
+  No = 'No',
+  NotAvailable = 'No hay información',
 }
 
 export enum StrategyStatus {
@@ -24,6 +23,78 @@ export enum StatusCarpetaATC {
   NotApplicable = 'No aplica',
   InProgress = 'En proceso',
   Delivered = 'Entregada',
+}
+
+// New enums for BasicInfoSheet
+export enum Gender {
+  Female = 'Mujer',
+  Male = 'Hombre',
+  PreferNotToSay = 'Prefiero no decirlo',
+}
+
+export enum MaritalStatus {
+  Single = 'Soltera/o',
+  Married = 'Casada/o',
+  FreeUnion = 'Unión libre',
+  Separated = 'Separada/o',
+  Widowed = 'Viuda/o',
+}
+
+export enum HousingType {
+  OwnNoMortgage = 'Propia (sin hipoteca)',
+  OwnWithMortgage = 'Propia (con hipoteca o crédito en curso)',
+  Rented = 'Rentada',
+  Borrowed = 'Prestada',
+  WithFamily = 'Vive con familiares',
+}
+
+export enum ResidencyTime {
+  LessThan1Year = 'Menos de 1 año',
+  From1To3Years = '1–3 años',
+  From4To10Years = '4–10 años',
+  MoreThan10Years = 'Más de 10 años',
+}
+
+export enum Occupation {
+  Employed = 'Empleada/o',
+  OwnBusiness = 'Negocio propio',
+  SelfEmployed = 'Trabajo por cuenta propia',
+  Housewife = 'Ama de casa',
+  Farmer = 'Agricultor/a',
+  Other = 'Otro',
+}
+
+export enum MonthlyIncome {
+  LessThan5k = 'Menos de $5,000',
+  Between5kAnd10k = 'Entre $5,000 y $10,000',
+  MoreThan10k = 'Más de $10,000',
+}
+
+export enum Dependents {
+  None = 'Ninguno',
+  OneToTwo = '1–2',
+  ThreeToFour = '3–4',
+  MoreThanFour = 'Más de 4',
+}
+
+export enum HousingSupportInterest {
+  Yes = 'Sí',
+  No = 'No',
+  NotSure = 'Aún no estoy segura/o',
+}
+
+export enum ImprovementType {
+  NewHome = 'Construcción de vivienda nueva',
+  Completion = 'Terminación (muros, techo, piso, baño, etc.)',
+  Expansion = 'Ampliación (cuarto adicional, cocina, baño)',
+  Regularization = 'Regularización o escrituración',
+  Other = 'Otro',
+}
+
+export enum PreferredContact {
+  Phone = 'Llamada telefónica',
+  WhatsApp = 'WhatsApp',
+  InPerson = 'Visita en domicilio',
 }
 
 export interface Task {
@@ -61,31 +132,52 @@ export interface SolidarityTitlingLoanData {
 }
 
 export interface TailoredLegalSupportData {
-  tramiteActual: string;
-  estatusTramite: string;
-  contactado: boolean;
+  procedureStatus?: Record<string, {
+    status: 'No iniciado' | 'Siendo asesorado' | 'Completado';
+    subStatus?: 'Pendiente de entrega de documentación' | 'Documento en presidencia municipal' | '';
+  }>;
+  // Old fields for migration
+  tramiteActual?: string;
+  estatusTramite?: string;
+  tramiteAnterior?: string;
+  siguienteTramite?: string;
+  // Other fields
+  contactCount: number;
   recibioFlyer: boolean;
-  recibioAsesoria: boolean;
   fechaUltimoContacto: string; // YYYY-MM-DD
   fechaSeguimiento: string; // YYYY-MM-DD
-  seguimientoRealizado: boolean;
-  tramiteAnterior: string;
-  siguienteTramite: string;
   observaciones: string;
-  enviarRecordatorio: boolean;
 }
 
+
 export interface DirectPromotionFIData {
-  contactado: boolean;
-  citaInformacion: string; // YYYY-MM-DD
-  recibioFlyer: boolean;
-  recibioAsesoria: boolean;
-  fechaUltimoContacto: string; // YYYY-MM-DD
-  seguimiento: boolean;
-  logroCredito: boolean;
-  institucion: string;
-  montoCredito: number;
-  observaciones: string;
+  // Old fields for migration - marked as optional
+  contactado?: boolean;
+  citaInformacion?: string; // Will be migrated to fechaCitaAsesoria
+  recibioAsesoria?: boolean; // Will be migrated to agendoCitaAsesoria
+  seguimiento?: boolean;
+
+  // Kept fields
+  recibioFlyer?: boolean;
+  institucion?: string;
+  observaciones?: string;
+
+  // New/Consolidated fields
+  agendoCitaAsesoria?: boolean;
+  fechaCitaAsesoria?: string; // YYYY-MM-DD
+  productoInteres?: string;
+  fechaUltimoContacto?: string; // YYYY-MM-DD
+  numeroContacto?: number;
+  recordatorioProximoContacto?: string; // YYYY-MM-DD
+  
+  solicitoInformacionIF?: boolean;
+  logroCredito?: boolean; // Equivalent to 'Accedió a producto financiero'
+  montoCredito?: number;
+}
+
+export interface TechnicalAssistanceIncentiveData {
+  startedConstructionWithin60Days: boolean;
+  notes: string;
 }
 
 
@@ -98,8 +190,35 @@ export interface CustomerStrategy {
   tasks: Task[];
   customData?: Record<string, any>;
   lastOfferContactDate?: string;
-  offerContactResponsible?: string;
   offerComments?: string;
+}
+
+export interface BasicInfo {
+  birthDate?: string; // YYYY-MM-DD
+  gender?: Gender;
+  maritalStatus?: MaritalStatus;
+  curp?: string;
+  addressMunicipality?: string;
+  addressColonia?: string;
+  addressStreet?: string;
+  addressPostalCode?: string;
+  alternatePhone?: string;
+  housingType?: HousingType;
+  residencyTime?: ResidencyTime;
+  hasOtherProperty?: boolean;
+  occupation?: Occupation;
+  occupationOther?: string;
+  monthlyIncome?: MonthlyIncome;
+  dependents?: Dependents;
+  hasCreditOrSavings?: boolean;
+  creditOrSavingsInfo?: string;
+  belongsToSavingsGroup?: boolean;
+  savingsGroupInfo?: string;
+  wantsHousingSupport?: HousingSupportInterest;
+  improvementType?: ImprovementType;
+  improvementTypeOther?: string;
+  preferredContactMethod?: PreferredContact;
+  promoterObservations?: string;
 }
 
 export interface Customer {
@@ -113,7 +232,8 @@ export interface Customer {
   lote: string;
   legalStatus: LegalStatus;
   pathwayToTitling: number; // New field for progress towards construction
-  financialStatus: FinancialStatus;
+  hasCredit: TriStateStatus;
+  hasSavings: TriStateStatus;
   motivation: string;
   group: string;
   lastUpdate: string; 
@@ -133,4 +253,5 @@ export interface Customer {
   atcFolderDeliveryDate?: string; // YYYY-MM-DD
   atcPrototype?: number;
   atcPrototypeType?: 'Moderno' | 'Tradicional' | '';
+  basicInfo?: BasicInfo;
 }

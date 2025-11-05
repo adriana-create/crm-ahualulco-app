@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Customer } from '../types';
-import { LegalStatus, FinancialStatus } from '../types';
+import { LegalStatus, TriStateStatus } from '../types';
 import { STRATEGIES, RESPONSABLES } from '../constants';
 import ProgressBar from './ProgressBar';
 import { DocumentArrowUpIcon } from './icons/DocumentArrowUpIcon';
@@ -17,6 +17,7 @@ interface CustomerTableProps {
   onSelectCustomer: (customerId: string) => void;
   onUpdatePotentialStrategies: (customerId: string, strategyIds: string[]) => void;
   onImportCustomers: (csvData: string) => void;
+  onUpdateCustomersFromCsv: (csvData: string) => void;
   onDeleteCustomer: (customerId: string) => void;
   loading: boolean;
   error: string | null;
@@ -33,20 +34,20 @@ const legalStatusColorMap: Record<LegalStatus, string> = {
     [LegalStatus.DeedDelivered]: 'bg-status-green/20 text-status-green',
 };
 
-const financialStatusColorMap: Record<FinancialStatus, string> = {
-  [FinancialStatus.ActiveCredit]: 'bg-status-green/20 text-status-green',
-  [FinancialStatus.NoCredit]: 'bg-status-gray/20 text-status-gray',
-  [FinancialStatus.PaidOff]: 'bg-status-blue/20 text-status-blue',
-  [FinancialStatus.Default]: 'bg-status-red/20 text-status-red',
+const savingsStatusColorMap: Record<TriStateStatus, string> = {
+  [TriStateStatus.Yes]: 'bg-status-green/20 text-status-green',
+  [TriStateStatus.No]: 'bg-status-red/20 text-status-red',
+  [TriStateStatus.NotAvailable]: 'bg-status-gray/20 text-status-gray',
 };
 
 
-const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onDeleteCustomer, loading, error, onRetry, onUpdateDetails }) => {
+const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onUpdateCustomersFromCsv, onDeleteCustomer, loading, error, onRetry, onUpdateDetails }) => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ name: '', responsable: '', group: '', activeStrategy: '', legalStatus: '', potentialStrategy: '' });
+  const [filters, setFilters] = useState({ name: '', responsable: '', group: '', activeStrategy: '', legalStatus: '', potentialStrategy: '', hasSavings: '' });
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+  const updateFileInputRef = useRef<HTMLInputElement>(null);
   
   const uniqueGroups = useMemo(() => [...new Set(customers.map(c => c.group).filter(Boolean).sort())], [customers]);
 
@@ -67,7 +68,8 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
         const potentialStrategyMatch = filters.potentialStrategy 
             ? customer.potentialStrategies.includes(filters.potentialStrategy)
             : true;
-        return nameMatch && responsableMatch && groupMatch && strategyMatch && legalStatusMatch && potentialStrategyMatch;
+        const hasSavingsMatch = filters.hasSavings ? customer.hasSavings === (filters.hasSavings as TriStateStatus) : true;
+        return nameMatch && responsableMatch && groupMatch && strategyMatch && legalStatusMatch && potentialStrategyMatch && hasSavingsMatch;
     });
 
     // Sorting
@@ -116,14 +118,14 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     };
   }, [dropdownRef]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, callback: (data: string) => void) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result;
         if (typeof text === 'string') {
-          onImportCustomers(text);
+          callback(text);
         }
       };
       reader.readAsText(file);
@@ -142,7 +144,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     if (loading) {
       return (
         <tr>
-          <td colSpan={10} className="text-center p-16">
+          <td colSpan={11} className="text-center p-16">
             <div className="flex justify-center items-center flex-col text-gray-500">
               <SpinnerIcon className="h-12 w-12" />
               <h3 className="text-lg font-semibold text-gray-700 mt-4">Cargando Clientes...</h3>
@@ -156,7 +158,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     if (error) {
       return (
         <tr>
-          <td colSpan={10} className="p-8">
+          <td colSpan={11} className="p-8">
             <div className="bg-red-50 border border-red-200 p-6 rounded-lg text-center">
                 <div className="flex justify-center mb-4">
                     <ExclamationTriangleIcon className="h-12 w-12 text-red-400" />
@@ -182,7 +184,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     if (customers.length === 0) {
         return (
             <tr>
-                <td colSpan={10} className="text-center p-16">
+                <td colSpan={11} className="text-center p-16">
                     <div className="flex justify-center mb-4">
                         <UsersIcon className="h-12 w-12 text-gray-400" />
                     </div>
@@ -196,7 +198,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
     if (filteredAndSortedCustomers.length === 0) {
        return (
             <tr>
-                <td colSpan={10} className="text-center p-16">
+                <td colSpan={11} className="text-center p-16">
                     <div className="flex justify-center mb-4">
                         <UsersIcon className="h-12 w-12 text-gray-400" />
                     </div>
@@ -242,6 +244,11 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
             <td className="px-6 py-4 whitespace-nowrap align-top">
               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${legalStatusColorMap[customer.legalStatus]}`}>
                 {customer.legalStatus}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap align-top">
+               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${savingsStatusColorMap[customer.hasSavings]}`}>
+                {customer.hasSavings}
               </span>
             </td>
             <td className="px-6 py-4 whitespace-nowrap align-top">
@@ -340,20 +347,38 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
               <h2 className="text-2xl font-bold text-white">Resumen de Clientes</h2>
               <p className="text-gray-300 mt-1">Seleccione un cliente para ver su trayectoria detallada.</p>
             </div>
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".csv"
-                style={{ display: 'none' }}
-            />
-            <button
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-primary bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors"
-            >
-                <DocumentArrowUpIcon className="w-5 h-5" />
-                Importar CSV
-            </button>
+            <div className="flex items-center gap-4">
+                <input
+                    type="file"
+                    ref={importFileInputRef}
+                    onChange={(e) => handleFileChange(e, onImportCustomers)}
+                    accept=".csv"
+                    style={{ display: 'none' }}
+                />
+                <input
+                    type="file"
+                    ref={updateFileInputRef}
+                    onChange={(e) => handleFileChange(e, onUpdateCustomersFromCsv)}
+                    accept=".csv"
+                    style={{ display: 'none' }}
+                />
+                <button
+                    onClick={() => updateFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-primary bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors"
+                    title="Actualizar el progreso de clientes existentes a partir de un CSV."
+                >
+                    <DocumentArrowUpIcon className="w-5 h-5" />
+                    Actualizar Progreso (CSV)
+                </button>
+                <button
+                    onClick={() => importFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-secondary border border-transparent rounded-md hover:bg-brand-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-secondary transition-colors"
+                    title="Importar y añadir nuevos clientes desde un archivo CSV."
+                >
+                    <DocumentArrowUpIcon className="w-5 h-5" />
+                    Importar Nuevos (CSV)
+                </button>
+            </div>
         </div>
         {!loading && !error && customers.length > 0 && (
             <div className="p-4 bg-gray-50 border-b border-gray-200 text-sm text-gray-600">
@@ -432,6 +457,17 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                 >
                     <option value="">Todos</option>
                     {Object.values(LegalStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </th>
+              <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                Tiene Ahorros
+                <select
+                    value={filters.hasSavings}
+                    onChange={(e) => handleFilterChange('hasSavings', e.target.value)}
+                    className="w-full text-xs mt-1 p-1 rounded border-gray-300"
+                >
+                    <option value="">Todos</option>
+                    {Object.values(TriStateStatus).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </th>
               <th scope="col" className="sticky top-0 z-10 bg-gray-50 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">

@@ -30,5 +30,19 @@ export const STRATEGY_SPECIFIC_FIELDS: Record<string, { key: string; label: stri
   ]
 };
 
+export const LEGAL_PROCEDURES = ["Título de propiedad", "Deslinde", "Permiso de construcción"];
+export const LEGAL_STATUS_OPTIONS: ('No iniciado' | 'Siendo asesorado' | 'Completado')[] = ["No iniciado", "Siendo asesorado", "Completado"];
+export const LEGAL_SUBSTATUS_OPTIONS: ('Pendiente de entrega de documentación' | 'Documento en presidencia municipal')[] = ["Pendiente de entrega de documentación", "Documento en presidencia municipal"];
+
+
 export const LOAN_AMOUNT = 5500;
 export const NUM_PAYMENTS = 6;
+
+export const PRODUCTO_INTERES_DPFI = [
+    'José Ma. Mercado',
+    'CAPOME',
+    'Fray Juan Calero',
+    'Cristobal Colón',
+    'INFONAVIT',
+    'Ninguna de las anteriores',
+];

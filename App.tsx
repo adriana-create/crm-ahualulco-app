@@ -8,14 +8,16 @@ function App() {
   const { 
     customers, 
     getCustomerById, 
-    updateCustomerDetails, 
+    updateCustomerDetails,
+    updateCustomerBasicInfo, 
     updateCustomerStrategy, 
     updateTask, 
     addTask, 
     updateCustomerStrategyCustomData, 
     updateCustomerPotentialStrategies, 
     addStrategyToCustomer,
-    importCustomers, 
+    importCustomers,
+    updateCustomersFromCsv,
     deleteCustomer,
     loading,
     error,
@@ -55,12 +57,12 @@ function App() {
             onBack={handleBack}
             onUpdateDetails={updateCustomerDetails}
             onUpdateStrategy={updateCustomerStrategy}
-            // FIX: Pass the 'updateTask' function from the hook to the 'onUpdateTask' prop.
             onUpdateTask={updateTask}
             onAddTask={addTask}
             onUpdateStrategyCustomData={updateCustomerStrategyCustomData}
             onAddStrategy={addStrategyToCustomer}
             onDeleteCustomer={handleDeleteCustomer}
+            onUpdateBasicInfo={updateCustomerBasicInfo}
           />
         ) : (
           <CustomerTable 
@@ -71,6 +73,7 @@ function App() {
             onSelectCustomer={handleSelectCustomer} 
             onUpdatePotentialStrategies={updateCustomerPotentialStrategies}
             onImportCustomers={importCustomers}
+            onUpdateCustomersFromCsv={updateCustomersFromCsv}
             onDeleteCustomer={handleDeleteCustomer}
             onUpdateDetails={updateCustomerDetails}
           />

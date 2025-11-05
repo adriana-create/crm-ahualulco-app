@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, FinancialStatus, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData } from '../types';
-import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS } from '../constants';
+import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus } from '../types';
+import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES } from '../constants';
 
 // IMPORTANT: Paste your deployed Google Apps Script URL here.
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwFi30K7rm-4ApAMHXAd0IbLXBMrXxlaecXMoYThnjwSOAFGHOXbDYWBikF2r3ekufm/exec';
@@ -68,7 +68,8 @@ const recalculateStrategyStatus = (strategy: CustomerStrategy): StrategyStatus =
         }
     } else if (strategyId === 'TLS') {
         const data = customData as TailoredLegalSupportData;
-        if (data && data.tramiteActual === 'Inicio de construcción' && data.estatusTramite === 'Completado') {
+        const lastProcedure = LEGAL_PROCEDURES[LEGAL_PROCEDURES.length - 1];
+        if (data && data.procedureStatus && data.procedureStatus[lastProcedure]?.status === 'Completado') {
             isCompleted = true;
         }
     } else if (strategyId === 'DPFI') {
@@ -98,7 +99,7 @@ const recalculateStrategyStatus = (strategy: CustomerStrategy): StrategyStatus =
         }
     } else if (strategyId === 'TLS') {
         const data = customData as TailoredLegalSupportData;
-        if (data && (data.fechaUltimoContacto || data.tramiteActual)) {
+        if (data && (data.contactCount > 0 || (data.procedureStatus && Object.values(data.procedureStatus).some(s => s.status !== 'No iniciado')))) {
             isInProgress = true;
         }
     } else if (strategyId === 'DPFI') {
@@ -132,36 +133,180 @@ export const useCustomers = () => {
             console.error("Data received from API is not an array:", result.data);
             throw new Error("Se recibió un formato de datos inesperado del servidor.");
         }
-        const typedCustomers = result.data.map((c: any) => ({
-            ...c,
-            strategies: Array.isArray(c.strategies) 
-                ? c.strategies.map((s: any) => ({ 
-                    ...s, 
-                    tasks: Array.isArray(s.tasks) ? s.tasks : [],
-                    lastOfferContactDate: s.lastOfferContactDate || '',
-                    offerContactResponsible: s.offerContactResponsible || '',
-                    offerComments: s.offerComments || '',
-                    offered: !!s.offered,
-                })) 
-                : [],
-            potentialStrategies: Array.isArray(c.potentialStrategies) ? c.potentialStrategies : [],
-            lots: parseInt(c.lots, 10) || 0,
-            pathwayToTitling: parseInt(c.pathwayToTitling, 10) || 0,
-            hasTituloPropiedad: !!c.hasTituloPropiedad,
-            hasDeslinde: !!c.hasDeslinde,
-            hasPermisoConstruccion: !!c.hasPermisoConstruccion,
-            modificacionLote: !!c.modificacionLote,
-            contratoATC: !!c.contratoATC,
-            pagoATC: !!c.pagoATC,
-            statusCarpetaATC: c.statusCarpetaATC || StatusCarpetaATC.NotApplicable,
-            recordatorioEntregaCarpeta: c.recordatorioEntregaCarpeta || '',
-            responsable: c.responsable || '',
-            startedConstruction: !!c.startedConstruction,
-            atcAmount: c.atcAmount ? parseFloat(c.atcAmount) : 0,
-            atcFolderDeliveryDate: c.atcFolderDeliveryDate || '',
-            atcPrototype: c.atcPrototype ? parseInt(c.atcPrototype, 10) : undefined,
-            atcPrototypeType: c.atcPrototypeType || '',
-        }));
+        const typedCustomers = result.data.map((c: any) => {
+            // Data migration for hasCredit and hasSavings
+            let hasCredit: TriStateStatus;
+            if (c.hasCredit && Object.values(TriStateStatus).includes(c.hasCredit)) {
+                hasCredit = c.hasCredit;
+            } else {
+                switch (c.financialStatus) {
+                    case 'Crédito Vigente':
+                    case 'Pagado':
+                    case 'En Mora':
+                        hasCredit = TriStateStatus.Yes;
+                        break;
+                    case 'Sin Crédito':
+                        hasCredit = TriStateStatus.No;
+                        break;
+                    default:
+                        hasCredit = TriStateStatus.NotAvailable;
+                }
+            }
+
+            const hasSavings: TriStateStatus = (c.hasSavings && Object.values(TriStateStatus).includes(c.hasSavings)) 
+                ? c.hasSavings 
+                : TriStateStatus.NotAvailable;
+
+
+            return {
+                ...c,
+                strategies: Array.isArray(c.strategies) 
+                    ? c.strategies.map((s: any) => {
+                        // Data migration for TLS strategy
+                        if (s.strategyId === 'TLS' && s.customData) {
+                            const data = s.customData as any; // Old data structure
+                             // First migration: from old fields to procedureStatus record of strings
+                            if (!data.procedureStatus) {
+                                const procedureStatus: Record<string, 'No iniciado' | 'En proceso' | 'Completado'> = {};
+                                const oldProcedures = ["Título de propiedad", "Deslinde", "Permiso de construcción", "Inicio de construcción"];
+                                const currentProcedureIndex = data.tramiteActual ? oldProcedures.indexOf(data.tramiteActual) : -1;
+                                
+                                LEGAL_PROCEDURES.forEach(proc => {
+                                    const procIndexInOldList = oldProcedures.indexOf(proc);
+                                    if (currentProcedureIndex !== -1 && procIndexInOldList < currentProcedureIndex) {
+                                        procedureStatus[proc] = 'Completado';
+                                    } else if (currentProcedureIndex !== -1 && procIndexInOldList === currentProcedureIndex) {
+                                        procedureStatus[proc] = data.estatusTramite || 'No iniciado';
+                                    } else {
+                                        procedureStatus[proc] = 'No iniciado';
+                                    }
+                                });
+
+                                data.procedureStatus = procedureStatus;
+                            }
+
+                            // Second migration: from procedureStatus record of strings to record of objects
+                            if (data.procedureStatus) {
+                                const statusRecord = data.procedureStatus as Record<string, any>;
+                                const firstValue = Object.values(statusRecord)[0];
+                                if (typeof firstValue === 'string') {
+                                    const newStatusRecord: TailoredLegalSupportData['procedureStatus'] = {};
+                                    for (const proc in statusRecord) {
+                                        const oldStatus = statusRecord[proc];
+                                        if (oldStatus === 'En proceso') {
+                                            newStatusRecord[proc] = { status: 'Siendo asesorado', subStatus: '' };
+                                        } else if (oldStatus === 'Completado') {
+                                            newStatusRecord[proc] = { status: 'Completado' };
+                                        } else {
+                                            newStatusRecord[proc] = { status: 'No iniciado' };
+                                        }
+                                    }
+                                    data.procedureStatus = newStatusRecord;
+                                }
+                            }
+                            
+                            // Third migration: from booleans to contactCount
+                            if (data.contactado !== undefined) {
+                                if (!data.contactCount) {
+                                    data.contactCount = data.contactado ? 1 : 0;
+                                }
+                                delete data.contactado;
+                            }
+                            if (data.contactCount === undefined) {
+                                data.contactCount = 0;
+                            }
+                            delete data.recibioAsesoria;
+                            delete data.seguimientoRealizado;
+                            delete data.enviarRecordatorio;
+                            s.customData = data;
+                        }
+                         // Data migration for DPFI strategy
+                        if (s.strategyId === 'DPFI' && s.customData) {
+                            const data = s.customData as any;
+                            const customData: DirectPromotionFIData = { ...data };
+
+                            // Migrate citaInformacion to fechaCitaAsesoria
+                            if (data.citaInformacion && !data.fechaCitaAsesoria) {
+                                customData.fechaCitaAsesoria = data.citaInformacion;
+                                delete customData.citaInformacion;
+                            }
+                            
+                            // Migrate contactado to numeroContacto
+                            if (typeof data.contactado !== 'undefined' && typeof data.numeroContacto === 'undefined') {
+                                customData.numeroContacto = data.contactado ? 1 : 0;
+                                delete customData.contactado;
+                            }
+                            
+                            // Migrate recibioAsesoria to agendoCitaAsesoria
+                            if (typeof data.recibioAsesoria !== 'undefined' && typeof data.agendoCitaAsesoria === 'undefined') {
+                                customData.agendoCitaAsesoria = data.recibioAsesoria;
+                                delete customData.recibioAsesoria;
+                            }
+                            
+                            // Remove old 'seguimiento' field
+                            if (typeof data.seguimiento !== 'undefined') {
+                                delete customData.seguimiento;
+                            }
+                            
+                            s.customData = customData;
+                        }
+                        return {
+                          ...s,
+                          tasks: Array.isArray(s.tasks) ? s.tasks : [],
+                          lastOfferContactDate: s.lastOfferContactDate || '',
+                          offerComments: s.offerComments || '',
+                          offered: !!s.offered,
+                        }
+                    }) 
+                    : [],
+                potentialStrategies: Array.isArray(c.potentialStrategies) ? c.potentialStrategies : [],
+                lots: parseInt(c.lots, 10) || 0,
+                pathwayToTitling: parseInt(c.pathwayToTitling, 10) || 0,
+                hasCredit,
+                hasSavings,
+                hasTituloPropiedad: !!c.hasTituloPropiedad,
+                hasDeslinde: !!c.hasDeslinde,
+                hasPermisoConstruccion: !!c.hasPermisoConstruccion,
+                modificacionLote: !!c.modificacionLote,
+                contratoATC: !!c.contratoATC,
+                pagoATC: !!c.pagoATC,
+                statusCarpetaATC: c.statusCarpetaATC || StatusCarpetaATC.NotApplicable,
+                recordatorioEntregaCarpeta: c.recordatorioEntregaCarpeta || '',
+                responsable: c.responsable || '',
+                startedConstruction: !!c.startedConstruction,
+                atcAmount: c.atcAmount ? parseFloat(c.atcAmount) : 0,
+                atcFolderDeliveryDate: c.atcFolderDeliveryDate || '',
+                atcPrototype: c.atcPrototype ? parseInt(c.atcPrototype, 10) : undefined,
+                atcPrototypeType: c.atcPrototypeType || '',
+                basicInfo: c.basicInfo || {
+                    birthDate: '',
+                    gender: undefined,
+                    maritalStatus: undefined,
+                    curp: '',
+                    addressMunicipality: '',
+                    addressColonia: '',
+                    addressStreet: '',
+                    addressPostalCode: '',
+                    alternatePhone: '',
+                    housingType: undefined,
+                    residencyTime: undefined,
+                    hasOtherProperty: false,
+                    occupation: undefined,
+                    occupationOther: '',
+                    monthlyIncome: undefined,
+                    dependents: undefined,
+                    hasCreditOrSavings: false,
+                    creditOrSavingsInfo: '',
+                    belongsToSavingsGroup: false,
+                    savingsGroupInfo: '',
+                    wantsHousingSupport: undefined,
+                    improvementType: undefined,
+                    improvementTypeOther: '',
+                    preferredContactMethod: undefined,
+                    promoterObservations: ''
+                },
+            }
+        });
         setCustomers(typedCustomers);
         setLastSyncTime(new Date());
       } else {
@@ -207,7 +352,7 @@ export const useCustomers = () => {
     }
   };
 
-  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'financialStatus' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => {
+  const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'hasCredit' | 'hasSavings' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
@@ -238,6 +383,21 @@ export const useCustomers = () => {
             updatedCustomer.group = newGroup;
         }
     }
+    updateCustomer(updatedCustomer);
+  }, [customers, getCustomerById]);
+
+  const updateCustomerBasicInfo = useCallback((customerId: string, updatedInfo: Partial<BasicInfo>) => {
+    const customer = getCustomerById(customerId);
+    if (!customer) return;
+
+    const updatedCustomer = {
+        ...customer,
+        basicInfo: {
+            ...(customer.basicInfo || {}), 
+            ...updatedInfo,
+        },
+        lastUpdate: new Date().toISOString(),
+    };
     updateCustomer(updatedCustomer);
   }, [customers, getCustomerById]);
 
@@ -380,32 +540,37 @@ export const useCustomers = () => {
             }))
         };
     } else if (strategyId === 'TLS') {
+        const procedureStatus = LEGAL_PROCEDURES.reduce((acc, proc) => {
+            acc[proc] = { status: 'No iniciado', subStatus: '' };
+            return acc;
+        }, {} as NonNullable<TailoredLegalSupportData['procedureStatus']>);
         customData = {
-            tramiteActual: '',
-            estatusTramite: '',
-            contactado: false,
+            procedureStatus,
+            contactCount: 0,
             recibioFlyer: false,
-            recibioAsesoria: false,
             fechaUltimoContacto: '',
             fechaSeguimiento: '',
-            seguimientoRealizado: false,
-            tramiteAnterior: '',
-            siguienteTramite: '',
             observaciones: '',
-            enviarRecordatorio: false
         };
     } else if (strategyId === 'DPFI') {
         customData = {
-            contactado: false,
-            citaInformacion: '',
-            recibioFlyer: false,
-            recibioAsesoria: false,
+            agendoCitaAsesoria: false,
+            fechaCitaAsesoria: '',
+            productoInteres: '',
             fechaUltimoContacto: '',
-            seguimiento: false,
+            numeroContacto: 0,
+            recordatorioProximoContacto: '',
+            solicitoInformacionIF: false,
             logroCredito: false,
             institucion: '',
             montoCredito: 0,
-            observaciones: ''
+            observaciones: '',
+            recibioFlyer: false,
+        };
+    } else if (strategyId === 'TAI') {
+        customData = {
+            startedConstructionWithin60Days: false,
+            notes: '',
         };
     } else {
       const fields = STRATEGY_SPECIFIC_FIELDS[strategyId];
@@ -426,7 +591,6 @@ export const useCustomers = () => {
         tasks: [],
         customData,
         lastOfferContactDate: '',
-        offerContactResponsible: '',
         offerComments: '',
     };
     
@@ -458,6 +622,25 @@ export const useCustomers = () => {
         setLoading(false);
     }
   }, [fetchCustomers]);
+  
+  const updateCustomersFromCsv = useCallback(async (csvString: string) => {
+    if (!csvString.trim()) {
+        alert("El archivo CSV está vacío.");
+        return;
+    }
+    setLoading(true);
+    try {
+        const result = await apiRequest('UPDATE_CUSTOMERS_FROM_CSV', { csvString });
+        const count = result.data?.count ?? result.count ?? 'algunos';
+        alert(`¡Se actualizaron con éxito los datos de ${count} clientes!`);
+        await fetchCustomers();
+    } catch (error) {
+        alert(`Error al actualizar clientes. Revise el formato del CSV y la consola para más detalles. Detalles: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    } finally {
+        setLoading(false);
+    }
+  }, [fetchCustomers]);
+
 
   const deleteCustomer = useCallback(async (customerId: string) => {
     setCustomers(prev => prev.filter(c => c.id !== customerId));
@@ -477,14 +660,16 @@ export const useCustomers = () => {
     lastSyncTime,
     fetchCustomers,
     getCustomerById, 
-    updateCustomerDetails, 
+    updateCustomerDetails,
+    updateCustomerBasicInfo, 
     updateCustomerStrategy, 
     updateTask, 
     addTask, 
     updateCustomerStrategyCustomData, 
     updateCustomerPotentialStrategies, 
     addStrategyToCustomer,
-    importCustomers, 
+    importCustomers,
+    updateCustomersFromCsv, 
     deleteCustomer 
   };
 };

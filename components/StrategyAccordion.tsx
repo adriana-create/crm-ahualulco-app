@@ -10,6 +10,7 @@ import TaskModal from './TaskModal';
 import SolidarityTitlingLoanForm from './SolidarityTitlingLoanForm';
 import TailoredLegalSupportForm from './TailoredLegalSupportForm';
 import DirectPromotionFIForm from './DirectPromotionFIForm';
+import TechnicalAssistanceIncentiveForm from './TechnicalAssistanceIncentiveForm';
 import InputGroup from './InputGroup';
 
 interface StrategyAccordionProps {
@@ -99,6 +100,7 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
                 const isSTL = strategyInfo.id === 'STL';
                 const isTLS = strategyInfo.id === 'TLS';
                 const isDPFI = strategyInfo.id === 'DPFI';
+                const isTAI = strategyInfo.id === 'TAI';
                 
                 return (
                     <div key={strategyInfo.id} className="border border-gray-200 rounded-lg">
@@ -140,7 +142,7 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
                                 {custStrategy.offered && (
                                     <div className="pt-4 border-t">
                                         <h4 className="text-md font-semibold text-gray-700 mb-2">Detalles de la Oferta</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 gap-4">
                                             <InputGroup
                                                 label="Fecha de último contacto"
                                                 id={`offer-date-${strategyInfo.id}`}
@@ -148,27 +150,14 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
                                                 value={custStrategy.lastOfferContactDate || ''}
                                                 onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { lastOfferContactDate: e.target.value })}
                                             />
-                                            <InputGroup label="Responsable del contacto" id={`offer-resp-${strategyInfo.id}`}>
-                                                <select
-                                                    id={`offer-resp-${strategyInfo.id}`}
-                                                    value={custStrategy.offerContactResponsible || ''}
-                                                    onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { offerContactResponsible: e.target.value })}
-                                                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-primary focus:border-brand-primary sm:text-sm rounded-md"
-                                                >
-                                                    <option value="">-- Seleccionar --</option>
-                                                    {RESPONSABLES.map(r => <option key={r} value={r}>{r.split('@')[0]}</option>)}
-                                                </select>
-                                            </InputGroup>
-                                            <div className="md:col-span-2">
-                                                <InputGroup
-                                                    label="Comentarios"
-                                                    id={`offer-comments-${strategyInfo.id}`}
-                                                    as="textarea"
-                                                    rows={2}
-                                                    value={custStrategy.offerComments || ''}
-                                                    onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { offerComments: e.target.value })}
-                                                />
-                                            </div>
+                                            <InputGroup
+                                                label="Comentarios"
+                                                id={`offer-comments-${strategyInfo.id}`}
+                                                as="textarea"
+                                                rows={2}
+                                                value={custStrategy.offerComments || ''}
+                                                onChange={(e) => onUpdateStrategy(customer.id, strategyInfo.id, { offerComments: e.target.value })}
+                                            />
                                         </div>
 
                                         <div className="flex items-center justify-between pt-4 mt-4 border-t">
@@ -208,6 +197,12 @@ const StrategyAccordion: React.FC<StrategyAccordionProps> = ({ customer, onUpdat
                                                     />
                                                 ) : isDPFI ? (
                                                     <DirectPromotionFIForm
+                                                        customer={customer}
+                                                        customerStrategy={custStrategy}
+                                                        onUpdateStrategy={onUpdateStrategy}
+                                                    />
+                                                ) : isTAI ? (
+                                                    <TechnicalAssistanceIncentiveForm
                                                         customer={customer}
                                                         customerStrategy={custStrategy}
                                                         onUpdateStrategy={onUpdateStrategy}
