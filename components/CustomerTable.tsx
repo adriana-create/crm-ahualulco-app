@@ -10,6 +10,7 @@ import { ExclamationTriangleIcon } from './icons/ExclamationTriangleIcon';
 import { UsersIcon } from './icons/UsersIcon';
 import { ArrowUpIcon } from './icons/ArrowUpIcon';
 import { ArrowDownIcon } from './icons/ArrowDownIcon';
+import { DocumentArrowDownIcon } from './icons/DocumentArrowDownIcon';
 
 
 interface CustomerTableProps {
@@ -23,6 +24,7 @@ interface CustomerTableProps {
   error: string | null;
   onRetry: () => void;
   onUpdateDetails: (customerId: string, details: Partial<Pick<Customer, 'responsable'>>) => void;
+  onExportAll: () => void;
 }
 
 type SortableKeys = 'firstName' | 'responsable' | 'group';
@@ -41,7 +43,7 @@ const savingsStatusColorMap: Record<TriStateStatus, string> = {
 };
 
 
-const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onUpdateCustomersFromCsv, onDeleteCustomer, loading, error, onRetry, onUpdateDetails }) => {
+const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, onUpdatePotentialStrategies, onImportCustomers, onUpdateCustomersFromCsv, onDeleteCustomer, loading, error, onRetry, onUpdateDetails, onExportAll }) => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [filters, setFilters] = useState({ name: '', responsable: '', group: '', activeStrategy: '', legalStatus: '', potentialStrategy: '', hasSavings: '' });
   const [sortConfig, setSortConfig] = useState<{ key: SortableKeys | null; direction: 'ascending' | 'descending' }>({ key: null, direction: 'ascending' });
@@ -362,6 +364,14 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                     accept=".csv"
                     style={{ display: 'none' }}
                 />
+                 <button
+                    onClick={onExportAll}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors"
+                    title="Exportar todos los datos de los clientes a un archivo CSV."
+                >
+                    <DocumentArrowDownIcon className="w-5 h-5" />
+                    Exportar Todo (CSV)
+                </button>
                 <button
                     onClick={() => updateFileInputRef.current?.click()}
                     className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-primary bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors"
@@ -385,7 +395,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                 Mostrando <strong>{filteredAndSortedCustomers.length}</strong> de <strong>{customers.length}</strong> clientes.
             </div>
         )}
-      <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)]">
+      <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

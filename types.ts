@@ -221,6 +221,12 @@ export interface BasicInfo {
   promoterObservations?: string;
 }
 
+export interface ChangeLogEntry {
+  timestamp: string; // ISO 8601 format
+  user: string;
+  description: string;
+}
+
 export interface Customer {
   id: string;
   paternalLastName: string;
@@ -254,4 +260,5 @@ export interface Customer {
   atcPrototype?: number;
   atcPrototypeType?: 'Moderno' | 'Tradicional' | '';
   basicInfo?: BasicInfo;
+  history?: ChangeLogEntry[];
 }

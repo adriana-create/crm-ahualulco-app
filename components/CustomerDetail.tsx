@@ -8,6 +8,8 @@ import { TrashIcon } from './icons/TrashIcon';
 import InputGroup from './InputGroup';
 import BasicInfoSheet from './BasicInfoSheet';
 import { RESPONSABLES } from '../constants';
+import ChangeHistoryLog from './ChangeHistoryLog';
+import { ListBulletIcon } from './icons/ListBulletIcon';
 
 
 interface CustomerDetailProps {
@@ -402,6 +404,21 @@ const CustomerDetail: React.FC<CustomerDetailProps> = ({ customer, onBack, onUpd
              onUpdateStrategyCustomData={onUpdateStrategyCustomData}
              onAddStrategy={onAddStrategy}
            />
+        </div>
+      </div>
+      
+      <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-gray-200 flex items-center gap-3">
+            <div className="bg-gray-100 text-gray-600 p-2 rounded-full">
+                <ListBulletIcon className="w-6 h-6" />
+            </div>
+            <div>
+                <h3 className="text-xl font-semibold text-gray-800">Historial de Cambios</h3>
+                <p className="text-gray-500 mt-1">Registro cronológico de las actualizaciones del cliente.</p>
+            </div>
+        </div>
+        <div className="p-6">
+            <ChangeHistoryLog history={customer.history || []} />
         </div>
       </div>
     </div>

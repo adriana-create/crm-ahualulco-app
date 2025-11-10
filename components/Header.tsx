@@ -12,7 +12,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ lastSyncTime, loading, onRefresh }) => {
   return (
     <header className="bg-header-bg shadow-md">
-      <div className="container mx-auto px-4 py-4 md:px-8 flex items-center justify-between">
+      <div className="max-w-screen-2xl mx-auto px-4 py-4 md:px-8 flex items-center justify-between">
         <div className="flex items-center">
           <UserGroupIcon className="h-8 w-8 text-white mr-3" />
           <h1 className="text-2xl font-bold text-white tracking-tight">Base de Datos: Clientes Ahualulco</h1>

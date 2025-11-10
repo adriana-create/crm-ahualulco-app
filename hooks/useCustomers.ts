@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus } from '../types';
-import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES } from '../constants';
+import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry } from '../types';
+import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES, STRATEGIES } from '../constants';
 
 // IMPORTANT: Paste your deployed Google Apps Script URL here.
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwFi30K7rm-4ApAMHXAd0IbLXBMrXxlaecXMoYThnjwSOAFGHOXbDYWBikF2r3ekufm/exec';
@@ -305,6 +305,7 @@ export const useCustomers = () => {
                     preferredContactMethod: undefined,
                     promoterObservations: ''
                 },
+                history: Array.isArray(c.history) ? c.history : [],
             }
         });
         setCustomers(typedCustomers);
@@ -333,7 +334,18 @@ export const useCustomers = () => {
     return customers.find(c => c.id === id);
   }, [customers]);
 
-  const updateCustomer = async (updatedCustomer: Customer) => {
+  const logHistory = useCallback(async (customerId: string, newLogs: ChangeLogEntry[]) => {
+      if (newLogs.length === 0) return;
+      try {
+          await apiRequest('LOG_HISTORY', { customerId, logs: newLogs });
+      } catch (error) {
+          console.error("Failed to log history to the backend:", error);
+          // Optional: Handle this error, e.g., by queueing logs for a retry.
+          // For now, we'll just log it to the console.
+      }
+  }, []);
+
+  const updateCustomer = async (updatedCustomer: Customer, newLogs: ChangeLogEntry[] = []) => {
     const customerWithRecalculatedStatuses = {
         ...updatedCustomer,
         strategies: updatedCustomer.strategies.map(strat => ({
@@ -343,8 +355,10 @@ export const useCustomers = () => {
     };
     
     setCustomers(prev => prev.map(c => c.id === customerWithRecalculatedStatuses.id ? customerWithRecalculatedStatuses : c));
+    
     try {
       await apiRequest('UPDATE_CUSTOMER', { customer: customerWithRecalculatedStatuses });
+      await logHistory(customerWithRecalculatedStatuses.id, newLogs);
       setLastSyncTime(new Date());
     } catch (error) {
       alert('No se pudieron guardar los cambios. Por favor, inténtelo de nuevo.');
@@ -355,6 +369,29 @@ export const useCustomers = () => {
   const updateCustomerDetails = useCallback((customerId: string, details: Partial<Pick<Customer, 'legalStatus' | 'manzana' | 'lote' | 'hasCredit' | 'hasSavings' | 'motivation' | 'modificacionLote' | 'contratoATC' | 'pagoATC' | 'statusCarpetaATC' | 'recordatorioEntregaCarpeta' | 'responsable' | 'startedConstruction' | 'hasTituloPropiedad' | 'hasDeslinde' | 'hasPermisoConstruccion' | 'atcAmount' | 'atcFolderDeliveryDate' | 'atcPrototype' | 'atcPrototypeType'>>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
+
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+
+    const fieldLabels: Record<string, string> = {
+        legalStatus: 'Estatus Legal', responsable: 'Responsable', manzana: 'Manzana', lote: 'Lote', hasCredit: 'Tiene Crédito',
+        hasSavings: 'Tiene Ahorros', motivation: 'Motivación', modificacionLote: 'Modificación de Lote', contratoATC: 'Contrato ATC',
+        pagoATC: 'Pago ATC', statusCarpetaATC: 'Estatus Carpeta ATC', recordatorioEntregaCarpeta: 'Recordatorio Carpeta',
+        startedConstruction: 'Inició Construcción', hasTituloPropiedad: 'Título de Propiedad', hasDeslinde: 'Deslinde',
+        hasPermisoConstruccion: 'Permiso de Construcción', atcAmount: 'Monto ATC', atcFolderDeliveryDate: 'Fecha Entrega Carpeta',
+        atcPrototype: 'Prototipo ATC', atcPrototypeType: 'Tipo Prototipo ATC'
+    };
+
+    Object.entries(details).forEach(([key, value]) => {
+        if (customer[key as keyof Customer] !== value) {
+            const oldValue = customer[key as keyof Customer];
+            logs.push({
+                timestamp: now, user,
+                description: `Actualizó "${fieldLabels[key] || key}" de "${oldValue}" a "${value}".`
+            });
+        }
+    });
 
     const tempUpdatedCustomer = { ...customer, ...details };
 
@@ -368,7 +405,8 @@ export const useCustomers = () => {
     let updatedCustomer = {
         ...tempUpdatedCustomer,
         pathwayToTitling: newPathwayPercentage,
-        lastUpdate: new Date().toISOString()
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
     
     if (details.legalStatus) {
@@ -380,15 +418,23 @@ export const useCustomers = () => {
         };
         const newGroup = groupMapping[details.legalStatus];
         if (newGroup) {
+            if (customer.group !== newGroup) {
+                logs.push({ timestamp: now, user, description: `Cambió de grupo automáticamente a "${newGroup}".`});
+            }
             updatedCustomer.group = newGroup;
         }
     }
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const updateCustomerBasicInfo = useCallback((customerId: string, updatedInfo: Partial<BasicInfo>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
+
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    logs.push({ timestamp: now, user, description: `Actualizó la Ficha Básica de Información.` });
 
     const updatedCustomer = {
         ...customer,
@@ -396,14 +442,31 @@ export const useCustomers = () => {
             ...(customer.basicInfo || {}), 
             ...updatedInfo,
         },
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const updateCustomerStrategy = useCallback((customerId: string, strategyId: string, updatedStrategy: Partial<CustomerStrategy>) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
+
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    const strategyName = STRATEGIES.find(s => s.id === strategyId)?.name || strategyId;
+    const oldStrategy = customer.strategies.find(s => s.strategyId === strategyId);
+
+    if (oldStrategy) {
+        if (updatedStrategy.accepted !== undefined && oldStrategy.accepted !== updatedStrategy.accepted) {
+            logs.push({ timestamp: now, user, description: `Cliente ${updatedStrategy.accepted ? 'aceptó' : 'ya no participa en'} la estrategia "${strategyName}".`});
+        }
+        if (updatedStrategy.status !== undefined && oldStrategy.status !== updatedStrategy.status) {
+            logs.push({ timestamp: now, user, description: `Estatus de "${strategyName}" cambió a "${updatedStrategy.status}".`});
+        }
+    }
+
 
     const newStrategies = customer.strategies.map(strategy => 
         strategy.strategyId === strategyId
@@ -414,20 +477,31 @@ export const useCustomers = () => {
     const updatedCustomer = {
         ...customer,
         strategies: newStrategies,
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
   
   const updateTask = useCallback((customerId: string, strategyId: string, taskId: string, updatedTask: Partial<Task>) => {
      const customer = getCustomerById(customerId);
      if (!customer) return;
 
+     const logs: ChangeLogEntry[] = [];
+     const now = new Date().toISOString();
+     const user = "Sistema CRM";
+     const strategyName = STRATEGIES.find(s => s.id === strategyId)?.name || strategyId;
+     
+     const oldTask = customer.strategies.find(s => s.strategyId === strategyId)?.tasks.find(t => t.id === taskId);
+     if (oldTask && updatedTask.isCompleted !== undefined && oldTask.isCompleted !== updatedTask.isCompleted) {
+         logs.push({ timestamp: now, user, description: `Marcó la tarea "${oldTask.description}" como ${updatedTask.isCompleted ? 'completada' : 'pendiente'} en "${strategyName}".` });
+     }
+
      const newStrategies = customer.strategies.map(strategy => {
         if (strategy.strategyId === strategyId) {
             return {
                 ...strategy,
-                lastUpdate: new Date().toISOString(),
+                lastUpdate: now,
                 tasks: strategy.tasks.map(task => 
                     task.id === taskId ? { ...task, ...updatedTask } : task
                 )
@@ -439,15 +513,22 @@ export const useCustomers = () => {
      const updatedCustomer = {
          ...customer,
          strategies: newStrategies,
-         lastUpdate: new Date().toISOString(),
+         lastUpdate: now,
+         history: [...logs, ...(customer.history || [])],
      };
-     updateCustomer(updatedCustomer);
+     updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const addTask = useCallback((customerId: string, strategyId:string, task: Omit<Task, 'id' | 'isCompleted'>, detailsToMerge: Partial<Customer> = {}) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
     
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    const strategyName = STRATEGIES.find(s => s.id === strategyId)?.name || strategyId;
+    logs.push({ timestamp: now, user, description: `Agregó nueva tarea a "${strategyName}": ${task.description}.` });
+
     const newTask: Task = {
         ...task,
         id: `TASK-${Date.now()}`,
@@ -458,7 +539,7 @@ export const useCustomers = () => {
         if (strategy.strategyId === strategyId) {
             return {
                 ...strategy,
-                lastUpdate: new Date().toISOString(),
+                lastUpdate: now,
                 tasks: [...strategy.tasks, newTask]
             };
         }
@@ -469,20 +550,31 @@ export const useCustomers = () => {
         ...customer,
         ...detailsToMerge,
         strategies: newStrategies,
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const updateCustomerStrategyCustomData = useCallback((customerId: string, strategyId: string, key: string, value: string | number | boolean) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    const strategyName = STRATEGIES.find(s => s.id === strategyId)?.name || strategyId;
+    const oldStrategy = customer.strategies.find(s => s.strategyId === strategyId);
+    
+    if (oldStrategy && oldStrategy.customData?.[key] !== value) {
+        logs.push({ timestamp: now, user, description: `Actualizó un detalle en la estrategia "${strategyName}".` });
+    }
+
     const newStrategies = customer.strategies.map(strategy => {
         if (strategy.strategyId === strategyId) {
             return {
                 ...strategy,
-                lastUpdate: new Date().toISOString(),
+                lastUpdate: now,
                 customData: {
                     ...strategy.customData,
                     [key]: value,
@@ -495,21 +587,28 @@ export const useCustomers = () => {
     const updatedCustomer = {
         ...customer,
         strategies: newStrategies,
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const updateCustomerPotentialStrategies = useCallback((customerId: string, strategyIds: string[]) => {
     const customer = getCustomerById(customerId);
     if (!customer) return;
 
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    logs.push({ timestamp: now, user, description: `Actualizó las estrategias potenciales.` });
+
     const updatedCustomer = { 
       ...customer, 
       potentialStrategies: strategyIds, 
-      lastUpdate: new Date().toISOString() 
+      lastUpdate: now,
+      history: [...logs, ...(customer.history || [])],
     };
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
   }, [customers, getCustomerById]);
 
   const addStrategyToCustomer = useCallback((customerId: string, strategyId: string) => {
@@ -520,6 +619,13 @@ export const useCustomers = () => {
         console.warn(`Strategy ${strategyId} already active for customer ${customerId}`);
         return;
     }
+
+    const logs: ChangeLogEntry[] = [];
+    const now = new Date().toISOString();
+    const user = "Sistema CRM";
+    const strategyName = STRATEGIES.find(s => s.id === strategyId)?.name || strategyId;
+    logs.push({ timestamp: now, user, description: `Activó el seguimiento para la estrategia "${strategyName}".` });
+
 
     let customData: Record<string, any> = {};
     if (strategyId === 'STL') {
@@ -587,7 +693,7 @@ export const useCustomers = () => {
         offered: false,
         accepted: false,
         status: StrategyStatus.NotStarted,
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
         tasks: [],
         customData,
         lastOfferContactDate: '',
@@ -597,10 +703,11 @@ export const useCustomers = () => {
     const updatedCustomer = {
         ...customer,
         strategies: [...customer.strategies, newStrategy],
-        lastUpdate: new Date().toISOString(),
+        lastUpdate: now,
+        history: [...logs, ...(customer.history || [])],
     };
 
-    updateCustomer(updatedCustomer);
+    updateCustomer(updatedCustomer, logs);
 
   }, [customers, getCustomerById]);
 
