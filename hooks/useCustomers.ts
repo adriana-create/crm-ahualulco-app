@@ -719,7 +719,7 @@ export const useCustomers = () => {
     }
     setLoading(true);
     try {
-        const result = await apiRequest('IMPORT_CUSTOMERS', { csvString });
+        const result = await apiRequest('ADD_CUSTOMERS_FROM_CSV', { csvString });
         const count = result.data?.count ?? result.count ?? 'algunos';
         alert(`¡Se importaron con éxito ${count} nuevos clientes!`);
         await fetchCustomers();
