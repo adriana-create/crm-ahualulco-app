@@ -824,9 +824,39 @@ export const useCustomers = () => {
                         let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
                         if (!strategy) {
-                            console.warn(`Intentando actualizar la estrategia '${strategyId}' para el cliente '${customerId}', pero la estrategia no está activa. Se omitirá.`);
-                            continue;
+                            console.log(`Estrategia '${strategyId}' no encontrada para el cliente '${customerId}'. Creando una nueva...`);
+                            let customData: Record<string, any> = {};
+                            if (strategyId === 'STL') {
+                                customData = { referencia: '', riesgo: 'Bajo', expediente: '', montoPrestamo: LOAN_AMOUNT, firmoAdenda: false, modalidadAbono: '', abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false })) };
+                            } else if (strategyId === 'TLS') {
+                                const procedureStatus = LEGAL_PROCEDURES.reduce((acc, proc) => ({ ...acc, [proc]: { status: 'No iniciado', subStatus: '' } }), {});
+                                customData = { procedureStatus, contactCount: 0, recibioFlyer: false, fechaUltimoContacto: '', fechaSeguimiento: '', observaciones: '' };
+                            } else if (strategyId === 'DPFI') {
+                                customData = { agendoCitaAsesoria: false, fechaCitaAsesoria: '', productoInteres: '', fechaUltimoContacto: '', numeroContacto: 0, recordatorioProximoContacto: '', solicitoInformacionIF: false, logroCredito: false, institucion: '', montoCredito: 0, observaciones: '', recibioFlyer: false };
+                            } else if (strategyId === 'TAI') {
+                                customData = { startedConstructionWithin60Days: false, notes: '' };
+                            } else {
+                                const fields = STRATEGY_SPECIFIC_FIELDS[strategyId];
+                                if (fields) {
+                                    customData = fields.reduce((acc, field) => ({ ...acc, [field.key]: field.type === 'number' ? 0 : '' }), {});
+                                }
+                            }
+
+                            const newStrategy: CustomerStrategy = {
+                                strategyId,
+                                offered: false,
+                                accepted: false,
+                                status: StrategyStatus.NotStarted,
+                                lastUpdate: now,
+                                tasks: [],
+                                customData,
+                                lastOfferContactDate: '',
+                                offerComments: '',
+                            };
+                            updatedCustomer.strategies.push(newStrategy);
+                            strategy = newStrategy;
                         }
+
 
                         if (field === 'customData') {
                             const customDataKey = parts.slice(2).join('_');
