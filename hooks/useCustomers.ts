@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry } from '../types';
+import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry, Abono } from '../types';
 import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES, STRATEGIES } from '../constants';
 
 // IMPORTANT: Paste your deployed Google Apps Script URL here.
@@ -358,7 +358,9 @@ export const useCustomers = () => {
     
     try {
       await apiRequest('UPDATE_CUSTOMER', { customer: customerWithRecalculatedStatuses });
-      await logHistory(customerWithRecalculatedStatuses.id, newLogs);
+      if (newLogs.length > 0) {
+        await logHistory(customerWithRecalculatedStatuses.id, newLogs);
+      }
       setLastSyncTime(new Date());
     } catch (error) {
       alert('No se pudieron guardar los cambios. Por favor, inténtelo de nuevo.');
@@ -730,24 +732,183 @@ export const useCustomers = () => {
     }
   }, [fetchCustomers]);
   
-  const updateCustomersFromCsv = useCallback(async (csvString: string) => {
-    if (!csvString.trim()) {
-        alert("El archivo CSV está vacío.");
-        return;
-    }
-    setLoading(true);
-    try {
-        const result = await apiRequest('UPDATE_CUSTOMERS_FROM_CSV', { csvString });
-        const count = result.data?.count ?? result.count ?? 'algunos';
-        alert(`¡Se actualizaron con éxito los datos de ${count} clientes!`);
-        await fetchCustomers();
-    } catch (error) {
-        alert(`Error al actualizar clientes. Revise el formato del CSV y la consola para más detalles. Detalles: ${error instanceof Error ? error.message : 'Error desconocido'}`);
-    } finally {
-        setLoading(false);
-    }
-  }, [fetchCustomers]);
+  const parseCsvForUpdate = (csvString: string): { headers: string[]; data: Record<string, string>[] } => {
+      const lines = csvString.replace(/\r\n/g, '\n').split('\n').filter(line => line.trim());
+      if (lines.length < 2) return { headers: [], data: [] };
 
+      const headers = lines[0].split(',').map(h => h.trim());
+      const data = lines.slice(1).map(line => {
+          const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+          const row: Record<string, string> = {};
+          headers.forEach((header, i) => {
+              let value = (values[i] || '').trim();
+              if (value.startsWith('"') && value.endsWith('"')) {
+                  value = value.substring(1, value.length - 1).replace(/""/g, '"');
+              }
+              row[header] = value;
+          });
+          return row;
+      });
+      return { headers, data };
+  };
+
+  const updateCustomersFromCsv = useCallback(async (csvString: string) => {
+      if (!csvString.trim()) {
+          alert("El archivo CSV está vacío.");
+          return;
+      }
+      setLoading(true);
+      setError(null);
+
+      try {
+          const { headers, data: rows } = parseCsvForUpdate(csvString);
+          if (rows.length === 0) {
+              alert("No se encontraron datos de clientes en el archivo CSV.");
+              setLoading(false);
+              return;
+          }
+          if (!headers.includes('id')) {
+              throw new Error("El archivo CSV debe contener una columna 'id'.");
+          }
+
+          const customersToUpdate: Customer[] = [];
+          const currentCustomersMap = new Map(customers.map(c => [c.id, c]));
+
+          for (const row of rows) {
+              const customerId = row.id;
+              if (!customerId) continue;
+
+              const originalCustomer = currentCustomersMap.get(customerId);
+              if (!originalCustomer) {
+                  console.warn(`Cliente con ID "${customerId}" del CSV no encontrado en la base de datos. Se omitirá.`);
+                  continue;
+              }
+
+              const updatedCustomer: Customer = JSON.parse(JSON.stringify(originalCustomer));
+              const customerLogs: ChangeLogEntry[] = [];
+              const now = new Date().toISOString();
+              const user = "Sistema CRM (CSV)";
+              const toBoolean = (val: string) => val.toLowerCase() === 'true';
+
+              for (const header of headers) {
+                  if (row[header] === undefined) continue;
+                  const value = row[header];
+
+                  const parts = header.split('_');
+                  try {
+                    if (parts.length === 1 && header !== 'id') {
+                        const key = header as keyof Customer;
+                        const oldValue = updatedCustomer[key];
+                        let newValue: any = value;
+
+                        if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                        else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                        else if (key === 'potentialStrategies') newValue = value.split(';').filter(Boolean);
+
+                        if (String(oldValue) !== String(newValue)) {
+                            (updatedCustomer as any)[key] = newValue;
+                        }
+                    } else if (parts[0] === 'basicInfo') {
+                        const key = parts[1] as keyof BasicInfo;
+                        if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
+                        const oldValue = updatedCustomer.basicInfo[key];
+                        let newValue: any = value;
+                        if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+
+                        if (String(oldValue) !== String(newValue)) {
+                            (updatedCustomer.basicInfo as any)[key] = newValue;
+                        }
+                    } else if (STRATEGIES.some(s => s.id === parts[0])) {
+                        const strategyId = parts[0];
+                        const field = parts[1];
+                        let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
+
+                        if (!strategy) {
+                            console.warn(`Intentando actualizar la estrategia '${strategyId}' para el cliente '${customerId}', pero la estrategia no está activa. Se omitirá.`);
+                            continue;
+                        }
+
+                        if (field === 'customData') {
+                            const customDataKey = parts.slice(2).join('_');
+                            const oldValue = strategy.customData?.[customDataKey];
+                            let newValue: any = value;
+                            if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                            else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                            
+                            if(String(oldValue) !== String(newValue)) {
+                                strategy.customData![customDataKey] = newValue;
+                            }
+                        } else if (field === 'abono') {
+                            const abonoIndex = parseInt(parts[2], 10) - 1;
+                            const abonoField = parts[3] as keyof Abono;
+                            const stlData = strategy.customData as SolidarityTitlingLoanData;
+                            if (stlData?.abonos?.[abonoIndex]) {
+                                const oldValue = stlData.abonos[abonoIndex][abonoField];
+                                let newValue: any = value;
+                                if (abonoField === 'realizado' || abonoField === 'validado') newValue = toBoolean(value);
+                                else if (abonoField === 'cantidad') newValue = parseFloat(value) || 0;
+                                
+                                if (String(oldValue) !== String(newValue)) {
+                                    (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
+                                }
+                            }
+                        } else {
+                            const key = field as keyof Omit<CustomerStrategy, 'tasks' | 'customData'>;
+                            const oldValue = strategy[key];
+                            let newValue: any = value;
+                            if (key === 'offered' || key === 'accepted') newValue = toBoolean(value);
+
+                            if (String(oldValue) !== String(newValue)) {
+                                (strategy as any)[key] = newValue;
+                            }
+                        }
+                    }
+                  } catch (e) {
+                      console.error(`Error procesando la columna "${header}" para el cliente ${customerId}:`, e);
+                  }
+              }
+
+              let completedSteps = 0;
+              if (updatedCustomer.hasTituloPropiedad) completedSteps++;
+              if (updatedCustomer.hasDeslinde) completedSteps++;
+              if (updatedCustomer.hasPermisoConstruccion) completedSteps++;
+              updatedCustomer.pathwayToTitling = Math.round((completedSteps / 3) * 100);
+
+              updatedCustomer.lastUpdate = now;
+              
+              if(JSON.stringify(originalCustomer) !== JSON.stringify(updatedCustomer)) {
+                   customerLogs.push({ timestamp: now, user, description: `Actualizado masivamente desde archivo CSV.` });
+                   updatedCustomer.history = [...customerLogs, ...(updatedCustomer.history || [])];
+                   customersToUpdate.push(updatedCustomer);
+              }
+          }
+
+          if (customersToUpdate.length === 0) {
+              alert("No se encontraron cambios para aplicar en los clientes existentes.");
+              setLoading(false);
+              return;
+          }
+          
+          setCustomers(prev => {
+              const updatesMap = new Map(customersToUpdate.map(c => [c.id, c]));
+              return prev.map(c => updatesMap.get(c.id) || c);
+          });
+
+          for (const customer of customersToUpdate) {
+              await updateCustomer(customer);
+          }
+
+          setLastSyncTime(new Date());
+          alert(`¡Se procesaron con éxito las actualizaciones para ${customersToUpdate.length} clientes!`);
+
+      } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          setError(`Error al actualizar clientes: ${errorMessage}. Revise el formato del CSV y la consola.`);
+          await fetchCustomers(); // Re-sync to ensure data consistency
+      } finally {
+          setLoading(false);
+      }
+  }, [customers, fetchCustomers, updateCustomer]);
 
   const deleteCustomer = useCallback(async (customerId: string) => {
     setCustomers(prev => prev.filter(c => c.id !== customerId));
