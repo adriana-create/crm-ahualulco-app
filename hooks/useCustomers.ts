@@ -788,7 +788,7 @@ export const useCustomers = () => {
               const customerLogs: ChangeLogEntry[] = [];
               const now = new Date().toISOString();
               const user = "Sistema CRM (CSV)";
-              const toBoolean = (val: string) => val.toLowerCase() === 'true';
+              const toBoolean = (val: string) => val ? val.toLowerCase() === 'true' : false;
 
               for (const header of headers) {
                   if (row[header] === undefined) continue;
@@ -820,13 +820,12 @@ export const useCustomers = () => {
                         }
                     } else if (STRATEGIES.some(s => s.id === parts[0])) {
                         const strategyId = parts[0];
-                        const field = parts[1];
+                        
                         let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
                         if (!strategy) {
-                            console.log(`Estrategia '${strategyId}' no encontrada para el cliente '${customerId}'. Creando una nueva...`);
                             let customData: Record<string, any> = {};
-                            if (strategyId === 'STL') {
+                             if (strategyId === 'STL') {
                                 customData = { referencia: '', riesgo: 'Bajo', expediente: '', montoPrestamo: LOAN_AMOUNT, firmoAdenda: false, modalidadAbono: '', abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false })) };
                             } else if (strategyId === 'TLS') {
                                 const procedureStatus = LEGAL_PROCEDURES.reduce((acc, proc) => ({ ...acc, [proc]: { status: 'No iniciado', subStatus: '' } }), {});
@@ -843,32 +842,49 @@ export const useCustomers = () => {
                             }
 
                             const newStrategy: CustomerStrategy = {
-                                strategyId,
-                                offered: false,
-                                accepted: false,
-                                status: StrategyStatus.NotStarted,
-                                lastUpdate: now,
-                                tasks: [],
-                                customData,
-                                lastOfferContactDate: '',
-                                offerComments: '',
+                                strategyId, offered: false, accepted: false, status: StrategyStatus.NotStarted,
+                                lastUpdate: now, tasks: [], customData, lastOfferContactDate: '', offerComments: '',
                             };
                             updatedCustomer.strategies.push(newStrategy);
                             strategy = newStrategy;
                         }
-
+                        
+                        if (!strategy.customData) strategy.customData = {};
+                        const field = parts[1];
 
                         if (field === 'customData') {
-                            const customDataKey = parts.slice(2).join('_');
-                            const oldValue = strategy.customData?.[customDataKey];
-                            let newValue: any = value;
-                            if (typeof oldValue === 'boolean') newValue = toBoolean(value);
-                            else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                            
-                            if(String(oldValue) !== String(newValue)) {
-                                strategy.customData![customDataKey] = newValue;
+                            if (strategyId === 'TLS') {
+                                const keyParts = parts.slice(2);
+                                const property = keyParts.pop();
+                                const procedureKey = keyParts.join('_');
+                                const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase().replace(/\s+/g, '_') === procedureKey);
+                                
+                                if (procedureName && (property === 'status' || property === 'subStatus')) {
+                                    const tlsData = strategy.customData as TailoredLegalSupportData;
+                                    if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
+                                    if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
+                                    
+                                    const oldValue = tlsData.procedureStatus[procedureName]?.[property as keyof typeof tlsData.procedureStatus[string]];
+                                    if (String(oldValue) !== String(value)) {
+                                        (tlsData.procedureStatus[procedureName] as any)[property!] = value;
+                                    }
+                                } else {
+                                    const customDataKey = parts.slice(2).join('_');
+                                    const oldValue = strategy.customData[customDataKey];
+                                    let newValue: any = value;
+                                    if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                                    else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                                    if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
+                                }
+                            } else {
+                                const customDataKey = parts.slice(2).join('_');
+                                const oldValue = strategy.customData[customDataKey];
+                                let newValue: any = value;
+                                if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                                else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                                if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
                             }
-                        } else if (field === 'abono') {
+                        } else if (strategyId === 'STL' && field === 'abono') {
                             const abonoIndex = parseInt(parts[2], 10) - 1;
                             const abonoField = parts[3] as keyof Abono;
                             const stlData = strategy.customData as SolidarityTitlingLoanData;
