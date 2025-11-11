@@ -771,8 +771,18 @@ export const useCustomers = () => {
               throw new Error("El archivo CSV debe contener una columna 'id'.");
           }
 
+          const toBoolean = (val: string): boolean => {
+              if (!val) return false;
+              return ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase().trim());
+          };
+
           const customersToUpdate: Customer[] = [];
           const currentCustomersMap = new Map(customers.map(c => [c.id, c]));
+
+          const customerBooleanKeys: (keyof Customer)[] = ['hasTituloPropiedad', 'hasDeslinde', 'hasPermisoConstruccion', 'modificacionLote', 'contratoATC', 'pagoATC', 'startedConstruction'];
+          const basicInfoBooleanKeys: (keyof BasicInfo)[] = ['hasOtherProperty', 'hasCreditOrSavings', 'belongsToSavingsGroup'];
+          const strategyBooleanKeys: (keyof CustomerStrategy)[] = ['offered', 'accepted'];
+          const abonoBooleanKeys: (keyof Abono)[] = ['realizado', 'validado'];
 
           for (const row of rows) {
               const customerId = row.id;
@@ -785,130 +795,124 @@ export const useCustomers = () => {
               }
 
               const updatedCustomer: Customer = JSON.parse(JSON.stringify(originalCustomer));
-              const customerLogs: ChangeLogEntry[] = [];
               const now = new Date().toISOString();
-              const user = "Sistema CRM (CSV)";
-              const toBoolean = (val: string) => val ? val.toLowerCase() === 'true' : false;
-
+              
               for (const header of headers) {
-                  if (row[header] === undefined) continue;
                   const value = row[header];
-
+                  if (value === undefined) continue;
+                  
                   const parts = header.split('_');
                   try {
-                    if (parts.length === 1 && header !== 'id') {
-                        const key = header as keyof Customer;
-                        const oldValue = updatedCustomer[key];
-                        let newValue: any = value;
+                      if (parts.length === 1 && header !== 'id') {
+                          const key = header as keyof Customer;
+                          const oldValue = updatedCustomer[key];
+                          let newValue: any;
 
-                        if (typeof oldValue === 'boolean') newValue = toBoolean(value);
-                        else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                        else if (key === 'potentialStrategies') newValue = value.split(';').filter(Boolean);
+                          if (customerBooleanKeys.includes(key)) {
+                              newValue = toBoolean(value);
+                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
+                          } else if (typeof oldValue === 'number') {
+                              newValue = parseFloat(value) || 0;
+                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
+                          } else if (key === 'potentialStrategies') {
+                              newValue = value.split(';').filter(Boolean);
+                              if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) (updatedCustomer as any)[key] = newValue;
+                          } else {
+                              newValue = value;
+                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
+                          }
+                      } else if (parts[0] === 'basicInfo') {
+                          const key = parts[1] as keyof BasicInfo;
+                          if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
+                          const oldValue = updatedCustomer.basicInfo[key];
+                          let newValue: any;
 
-                        if (String(oldValue) !== String(newValue)) {
-                            (updatedCustomer as any)[key] = newValue;
-                        }
-                    } else if (parts[0] === 'basicInfo') {
-                        const key = parts[1] as keyof BasicInfo;
-                        if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
-                        const oldValue = updatedCustomer.basicInfo[key];
-                        let newValue: any = value;
-                        if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                          if (basicInfoBooleanKeys.includes(key)) {
+                              newValue = toBoolean(value);
+                          } else {
+                              newValue = value === '' ? undefined : value;
+                          }
+                          
+                          if (oldValue !== newValue) {
+                              (updatedCustomer.basicInfo as any)[key] = newValue;
+                          }
+                      } else if (STRATEGIES.some(s => s.id === parts[0])) {
+                          const strategyId = parts[0];
+                          let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
-                        if (String(oldValue) !== String(newValue)) {
-                            (updatedCustomer.basicInfo as any)[key] = newValue;
-                        }
-                    } else if (STRATEGIES.some(s => s.id === parts[0])) {
-                        const strategyId = parts[0];
-                        
-                        let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
+                          if (!strategy && value.trim() !== '') {
+                              // If any value for a strategy exists, create it
+                              const newStrategy: Partial<CustomerStrategy> = { strategyId, customData: {} };
+                              updatedCustomer.strategies.push(newStrategy as CustomerStrategy);
+                              strategy = updatedCustomer.strategies[updatedCustomer.strategies.length-1];
+                          }
+                          
+                          if (!strategy) continue;
+                          if (!strategy.customData) strategy.customData = {};
+                          
+                          const field = parts[1];
 
-                        if (!strategy) {
-                            let customData: Record<string, any> = {};
-                             if (strategyId === 'STL') {
-                                customData = { referencia: '', riesgo: 'Bajo', expediente: '', montoPrestamo: LOAN_AMOUNT, firmoAdenda: false, modalidadAbono: '', abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false })) };
-                            } else if (strategyId === 'TLS') {
-                                const procedureStatus = LEGAL_PROCEDURES.reduce((acc, proc) => ({ ...acc, [proc]: { status: 'No iniciado', subStatus: '' } }), {});
-                                customData = { procedureStatus, contactCount: 0, recibioFlyer: false, fechaUltimoContacto: '', fechaSeguimiento: '', observaciones: '' };
-                            } else if (strategyId === 'DPFI') {
-                                customData = { agendoCitaAsesoria: false, fechaCitaAsesoria: '', productoInteres: '', fechaUltimoContacto: '', numeroContacto: 0, recordatorioProximoContacto: '', solicitoInformacionIF: false, logroCredito: false, institucion: '', montoCredito: 0, observaciones: '', recibioFlyer: false };
-                            } else if (strategyId === 'TAI') {
-                                customData = { startedConstructionWithin60Days: false, notes: '' };
-                            } else {
-                                const fields = STRATEGY_SPECIFIC_FIELDS[strategyId];
-                                if (fields) {
-                                    customData = fields.reduce((acc, field) => ({ ...acc, [field.key]: field.type === 'number' ? 0 : '' }), {});
-                                }
-                            }
+                          if (field === 'customData') {
+                               const customDataKey = parts.slice(2).join('_');
+                               const oldValue = strategy.customData[customDataKey];
+                               let newValue: any = value;
+                               if (typeof oldValue === 'boolean') newValue = toBoolean(value);
+                               else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                               if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
 
-                            const newStrategy: CustomerStrategy = {
-                                strategyId, offered: false, accepted: false, status: StrategyStatus.NotStarted,
-                                lastUpdate: now, tasks: [], customData, lastOfferContactDate: '', offerComments: '',
-                            };
-                            updatedCustomer.strategies.push(newStrategy);
-                            strategy = newStrategy;
-                        }
-                        
-                        if (!strategy.customData) strategy.customData = {};
-                        const field = parts[1];
-
-                        if (field === 'customData') {
-                            if (strategyId === 'TLS') {
+                          } else if (strategyId === 'STL' && field === 'abono') {
+                              const abonoIndex = parseInt(parts[2], 10) - 1;
+                              const abonoField = parts[3] as keyof Abono;
+                              const stlData = strategy.customData as SolidarityTitlingLoanData;
+                              if (stlData?.abonos?.[abonoIndex]) {
+                                  const oldValue = stlData.abonos[abonoIndex][abonoField];
+                                  let newValue: any = value;
+                                  if (abonoBooleanKeys.includes(abonoField)) {
+                                      newValue = toBoolean(value);
+                                  } else if (abonoField === 'cantidad') {
+                                      newValue = parseFloat(value) || 0;
+                                  }
+                                  
+                                  if (String(oldValue) !== String(newValue)) {
+                                      (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
+                                  }
+                              }
+                          } else if(strategyId === 'TLS' && field === 'customData'){
                                 const keyParts = parts.slice(2);
-                                const property = keyParts.pop();
+                                const property = keyParts.pop() as 'status' | 'subStatus' | undefined;
                                 const procedureKey = keyParts.join('_');
                                 const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase().replace(/\s+/g, '_') === procedureKey);
                                 
-                                if (procedureName && (property === 'status' || property === 'subStatus')) {
+                                if (procedureName && property) {
                                     const tlsData = strategy.customData as TailoredLegalSupportData;
                                     if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
                                     if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
                                     
-                                    const oldValue = tlsData.procedureStatus[procedureName]?.[property as keyof typeof tlsData.procedureStatus[string]];
+                                    const oldValue = tlsData.procedureStatus[procedureName]?.[property];
                                     if (String(oldValue) !== String(value)) {
-                                        (tlsData.procedureStatus[procedureName] as any)[property!] = value;
+                                        (tlsData.procedureStatus[procedureName] as any)[property] = value;
                                     }
                                 } else {
-                                    const customDataKey = parts.slice(2).join('_');
-                                    const oldValue = strategy.customData[customDataKey];
-                                    let newValue: any = value;
-                                    if (typeof oldValue === 'boolean') newValue = toBoolean(value);
-                                    else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                                    if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
+                                     const customDataKey = parts.slice(2).join('_');
+                                     const oldValue = strategy.customData[customDataKey];
+                                     let newValue: any = value;
+                                     if(typeof oldValue === 'boolean') newValue = toBoolean(value);
+                                     else if(typeof oldValue === 'number') newValue = parseFloat(value) || 0;
+                                     if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
                                 }
-                            } else {
-                                const customDataKey = parts.slice(2).join('_');
-                                const oldValue = strategy.customData[customDataKey];
-                                let newValue: any = value;
-                                if (typeof oldValue === 'boolean') newValue = toBoolean(value);
-                                else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                                if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
-                            }
-                        } else if (strategyId === 'STL' && field === 'abono') {
-                            const abonoIndex = parseInt(parts[2], 10) - 1;
-                            const abonoField = parts[3] as keyof Abono;
-                            const stlData = strategy.customData as SolidarityTitlingLoanData;
-                            if (stlData?.abonos?.[abonoIndex]) {
-                                const oldValue = stlData.abonos[abonoIndex][abonoField];
-                                let newValue: any = value;
-                                if (abonoField === 'realizado' || abonoField === 'validado') newValue = toBoolean(value);
-                                else if (abonoField === 'cantidad') newValue = parseFloat(value) || 0;
-                                
-                                if (String(oldValue) !== String(newValue)) {
-                                    (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
-                                }
-                            }
-                        } else {
-                            const key = field as keyof Omit<CustomerStrategy, 'tasks' | 'customData'>;
-                            const oldValue = strategy[key];
-                            let newValue: any = value;
-                            if (key === 'offered' || key === 'accepted') newValue = toBoolean(value);
-
-                            if (String(oldValue) !== String(newValue)) {
-                                (strategy as any)[key] = newValue;
-                            }
-                        }
-                    }
+                          } else {
+                              const key = field as keyof CustomerStrategy;
+                              const oldValue = strategy[key];
+                              let newValue: any = value;
+                              if (strategyBooleanKeys.includes(key)) {
+                                  newValue = toBoolean(value);
+                              }
+                              
+                              if (oldValue !== newValue) {
+                                  (strategy as any)[key] = newValue;
+                              }
+                          }
+                      }
                   } catch (e) {
                       console.error(`Error procesando la columna "${header}" para el cliente ${customerId}:`, e);
                   }
@@ -923,7 +927,7 @@ export const useCustomers = () => {
               updatedCustomer.lastUpdate = now;
               
               if(JSON.stringify(originalCustomer) !== JSON.stringify(updatedCustomer)) {
-                   customerLogs.push({ timestamp: now, user, description: `Actualizado masivamente desde archivo CSV.` });
+                   const customerLogs: ChangeLogEntry[] = [{ timestamp: now, user: "Sistema CRM (CSV)", description: `Actualizado masivamente desde archivo CSV.` }];
                    updatedCustomer.history = [...customerLogs, ...(updatedCustomer.history || [])];
                    customersToUpdate.push(updatedCustomer);
               }
@@ -941,7 +945,8 @@ export const useCustomers = () => {
           });
 
           for (const customer of customersToUpdate) {
-              await updateCustomer(customer);
+              // Passing empty logs because they are already added to the customer object
+              await updateCustomer(customer, []); 
           }
 
           setLastSyncTime(new Date());
