@@ -743,6 +743,7 @@ export const useCustomers = () => {
     }
   }, [fetchCustomers]);
   
+  // --- START OF CSV UPDATE REFACTOR ---
   const parseCsvForUpdate = (csvString: string): { headers: string[]; data: Record<string, string>[] } => {
       const lines = csvString.replace(/\r\n/g, '\n').split('\n').filter(line => line.trim());
       if (lines.length < 2) return { headers: [], data: [] };
@@ -750,52 +751,56 @@ export const useCustomers = () => {
       const headers = lines[0].split(',').map(h => h.trim());
       const data = lines.slice(1).map(line => {
           const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-          const row: Record<string, string> = {};
-          headers.forEach((header, i) => {
+          return headers.reduce((obj, header, i) => {
               let value = (values[i] || '').trim();
               if (value.startsWith('"') && value.endsWith('"')) {
                   value = value.substring(1, value.length - 1).replace(/""/g, '"');
               }
-              row[header] = value;
-          });
-          return row;
+              obj[header] = value;
+              return obj;
+          }, {} as Record<string, string>);
       });
       return { headers, data };
   };
 
-  const isBooleanHeader = (header: string): boolean => {
-      const patterns = [
-          /^has[A-Z]/, 
-          /^basicInfo_has[A-Z]/,
-          /_(offered|accepted|realizado|validado)$/,
-          /_(firmoAdenda|recibioFlyer|agendoCitaAsesoria|solicitoInformacionIF|logroCredito|startedConstructionWithin60Days)$/,
-      ];
-      if (['modificacionLote', 'contratoATC', 'pagoATC', 'startedConstruction'].includes(header)) return true;
-      return patterns.some(p => p.test(header));
-  }
-  
-  const isNumberHeader = (header: string): boolean => {
-      const patterns = [
-        /_(cantidad|monto|amount|count|numero|prototype)$/i,
-        /_lots$/,
-        /_pathwayToTitling$/
-      ];
-      if (['lots', 'pathwayToTitling', 'atcAmount', 'atcPrototype'].includes(header)) return true;
-      return patterns.some(p => p.test(header));
-  }
-
   const getTypedValue = (header: string, value: string): any => {
       const cleanValue = value.trim();
-      const localToBoolean = (val: string): boolean => ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase());
+      if (cleanValue === '') return value;
 
-      if (isBooleanHeader(header)) {
-          return localToBoolean(cleanValue);
+      // Boolean check
+      const boolPatterns = [/^has[A-Z]/, /^basicInfo_has[A-Z]/, /_(offered|accepted|realizado|validado)$/, /_(firmoAdenda|recibioFlyer|agendoCitaAsesoria|solicitoInformacionIF|logroCredito|startedConstructionWithin60Days)$/];
+      if (['modificacionLote', 'contratoATC', 'pagoATC', 'startedConstruction'].includes(header) || boolPatterns.some(p => p.test(header))) {
+          return ['true', 'verdadero', 'sí', 'si', '1'].includes(cleanValue.toLowerCase());
       }
       
-      if (isNumberHeader(header)) {
-          if (cleanValue === '') return 0;
-          const num = parseFloat(cleanValue);
+      // Number check (handles currency)
+      const numPatterns = [/_(cantidad|monto|amount|count|numero|prototype)$/i, /_lots$/, /_pathwayToTitling$/];
+      if (['lots', 'pathwayToTitling', 'atcAmount', 'atcPrototype'].includes(header) || numPatterns.some(p => p.test(header))) {
+          const numericString = cleanValue.replace(/[$,]/g, '');
+          const num = parseFloat(numericString);
           return isNaN(num) ? 0 : num;
+      }
+
+      // Date check (handles various formats and outputs YYYY-MM-DD)
+      if (/_fecha|_date|recordatorioEntregaCarpeta|atcFolderDeliveryDate|birthDate/i.test(header)) {
+          try {
+              const d = new Date(cleanValue);
+              if (isNaN(d.getTime())) return cleanValue;
+              const year = d.getUTCFullYear();
+              const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+              const day = String(d.getUTCDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+          } catch {
+              return cleanValue;
+          }
+      }
+
+      // Specific string normalization
+      if (header === 'STL_customData_riesgo') {
+          const lcValue = cleanValue.toLowerCase();
+          if (lcValue.includes('medio') || lcValue.includes('mediano')) return 'Medio';
+          if (lcValue.includes('bajo')) return 'Bajo';
+          if (lcValue.includes('alto')) return 'Alto';
       }
       
       return cleanValue;
@@ -811,41 +816,31 @@ export const useCustomers = () => {
 
       try {
           const { headers, data: rows } = parseCsvForUpdate(csvString);
-          if (rows.length === 0) {
-              alert("No se encontraron datos de clientes en el archivo CSV.");
-              setLoading(false);
-              return;
-          }
-          if (!headers.includes('id')) {
-              throw new Error("El archivo CSV debe contener una columna 'id'.");
-          }
+          if (rows.length === 0) throw new Error("No se encontraron datos de clientes en el archivo CSV.");
+          if (!headers.includes('id')) throw new Error("El archivo CSV debe contener una columna 'id'.");
 
           const customersToUpdate: Customer[] = [];
-          const currentCustomersMap = new Map(customers.map(c => [c.id, c]));
-
+          const currentCustomersMap = new Map(customers.map(c => [c.id, JSON.parse(JSON.stringify(c))]));
+          
           for (const row of rows) {
               const customerId = row.id;
-              if (!customerId) continue;
-
-              const originalCustomer = currentCustomersMap.get(customerId);
-              if (!originalCustomer) {
-                  console.warn(`Cliente con ID "${customerId}" del CSV no encontrado en la base de datos. Se omitirá.`);
+              if (!customerId || !currentCustomersMap.has(customerId)) {
+                  console.warn(`Cliente con ID "${customerId}" del CSV no encontrado o inválido. Se omitirá.`);
                   continue;
               }
 
-              const updatedCustomer: Customer = JSON.parse(JSON.stringify(originalCustomer));
+              const updatedCustomer = currentCustomersMap.get(customerId)!;
               const now = new Date().toISOString();
-              
+
               for (const header of headers) {
-                  if (row[header] === undefined) continue;
+                  if (row[header] === undefined || header === 'id') continue;
                   
                   const newValue = getTypedValue(header, row[header]);
                   const parts = header.split('_');
 
                   try {
-                       if (parts.length === 1 && header !== 'id') {
-                          const key = header as keyof Customer;
-                          (updatedCustomer as any)[key] = newValue;
+                      if (parts.length === 1) {
+                          (updatedCustomer as any)[header] = newValue;
                       } else if (parts[0] === 'basicInfo') {
                           const key = parts[1] as keyof BasicInfo;
                           if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
@@ -855,61 +850,34 @@ export const useCustomers = () => {
                           let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
                           if (!strategy) {
-                                const newStrategy: CustomerStrategy = {
-                                    strategyId: strategyId, offered: false, accepted: false,
-                                    status: StrategyStatus.NotStarted, lastUpdate: now, tasks: [],
-                                    customData: {}, lastOfferContactDate: '', offerComments: '',
-                                };
-                                if (strategyId === 'STL') {
-                                    newStrategy.customData = {
-                                        referencia: '',
-                                        riesgo: 'Bajo',
-                                        expediente: '',
-                                        montoPrestamo: LOAN_AMOUNT,
-                                        firmoAdenda: false,
-                                        modalidadAbono: '',
-                                        abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({
-                                            realizado: false,
-                                            cantidad: 0,
-                                            fecha: '',
-                                            formaDePago: '',
-                                            comprobante: '',
-                                            validado: false
-                                        }))
-                                    };
-                                } else if (strategyId === 'TLS') {
-                                     newStrategy.customData = {
-                                        procedureStatus: LEGAL_PROCEDURES.reduce((acc, proc) => {
-                                            acc[proc] = { status: 'No iniciado', subStatus: '' };
-                                            return acc;
-                                        }, {} as NonNullable<TailoredLegalSupportData['procedureStatus']>)
-                                    };
-                                }
-                                updatedCustomer.strategies.push(newStrategy);
-                                strategy = newStrategy;
+                              addStrategyToCustomer(customerId, strategyId);
+                              const customerAfterAdd = customers.find(c=> c.id === customerId)!;
+                              updatedCustomer.strategies = [...customerAfterAdd.strategies];
+                              strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
+                              if (!strategy) continue;
                           }
                           
                           if (!strategy.customData) strategy.customData = {};
                           
                           const field = parts[1];
-                          const key = parts.slice(1).join('_') as keyof CustomerStrategy;
+                          const key = parts.slice(1).join('_');
 
                           if (field === 'customData') {
-                               const customDataKey = parts.slice(2).join('_');
-                               if (strategyId === 'TLS' && customDataKey.includes('status') || customDataKey.includes('subStatus')) {
-                                    const keyParts = parts.slice(2);
-                                    const property = keyParts.pop() as 'status' | 'subStatus';
-                                    const procedureKey = keyParts.join('_').replace(/_/g, ' ');
-                                    const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase() === procedureKey.toLowerCase());
-                                    if(procedureName && property){
-                                        const tlsData = strategy.customData as TailoredLegalSupportData;
-                                        if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
-                                        if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
-                                        (tlsData.procedureStatus[procedureName] as any)[property] = newValue;
-                                    }
-                               } else {
-                                  strategy.customData[customDataKey] = newValue;
-                               }
+                              const customDataKey = parts.slice(2).join('_');
+                              if (strategyId === 'TLS' && (customDataKey.endsWith('_status') || customDataKey.endsWith('_subStatus'))) {
+                                  const keyParts = customDataKey.split('_');
+                                  const property = keyParts.pop() as 'status' | 'subStatus';
+                                  const procedureKey = keyParts.join(' ');
+                                  const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase() === procedureKey.toLowerCase());
+                                  if (procedureName && property) {
+                                      const tlsData = strategy.customData as TailoredLegalSupportData;
+                                      if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
+                                      if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
+                                      (tlsData.procedureStatus[procedureName] as any)[property] = newValue;
+                                  }
+                              } else {
+                                strategy.customData[customDataKey] = newValue;
+                              }
                           } else if (strategyId === 'STL' && field === 'abono') {
                               const abonoIndex = parseInt(parts[2], 10) - 1;
                               const abonoField = parts[3] as keyof Abono;
@@ -928,13 +896,12 @@ export const useCustomers = () => {
               }
 
               let completedSteps = 0;
-              if (updatedCustomer.hasTituloPropiedad) completedSteps++;
-              if (updatedCustomer.hasDeslinde) completedSteps++;
-              if (updatedCustomer.hasPermisoConstruccion) completedSteps++;
+              if (toBoolean(updatedCustomer.hasTituloPropiedad)) completedSteps++;
+              if (toBoolean(updatedCustomer.hasDeslinde)) completedSteps++;
+              if (toBoolean(updatedCustomer.hasPermisoConstruccion)) completedSteps++;
               updatedCustomer.pathwayToTitling = Math.round((completedSteps / 3) * 100);
 
               updatedCustomer.lastUpdate = now;
-              
               const customerLogs: ChangeLogEntry[] = [{ timestamp: now, user: "Sistema CRM (CSV)", description: `Actualizado masivamente desde archivo CSV.` }];
               updatedCustomer.history = [...customerLogs, ...(updatedCustomer.history || [])];
               customersToUpdate.push(updatedCustomer);
@@ -946,17 +913,26 @@ export const useCustomers = () => {
               return;
           }
           
+          const finalCustomers = customersToUpdate.map(customer => ({
+              ...customer,
+              strategies: customer.strategies.map(strat => ({
+                  ...strat,
+                  status: recalculateStrategyStatus(strat)
+              }))
+          }));
+
           setCustomers(prev => {
-              const updatesMap = new Map(customersToUpdate.map(c => [c.id, c]));
+              const updatesMap = new Map(finalCustomers.map(c => [c.id, c]));
               return prev.map(c => updatesMap.get(c.id) || c);
           });
 
-          for (const customer of customersToUpdate) {
-              await updateCustomer(customer, []); 
+          // Send updates to the backend sequentially.
+          for (const customer of finalCustomers) {
+              await apiRequest('UPDATE_CUSTOMER', { customer });
           }
 
           setLastSyncTime(new Date());
-          alert(`¡Se procesaron con éxito las actualizaciones para ${customersToUpdate.length} clientes!`);
+          alert(`¡Se procesaron con éxito las actualizaciones para ${finalCustomers.length} clientes!`);
 
       } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -965,7 +941,8 @@ export const useCustomers = () => {
       } finally {
           setLoading(false);
       }
-  }, [customers, fetchCustomers, updateCustomer]);
+  }, [customers, fetchCustomers, addStrategyToCustomer]);
+  // --- END OF CSV UPDATE REFACTOR ---
 
   const deleteCustomer = useCallback(async (customerId: string) => {
     setCustomers(prev => prev.filter(c => c.id !== customerId));
