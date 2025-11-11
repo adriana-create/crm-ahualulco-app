@@ -125,6 +125,14 @@ export const useCustomers = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
+  const toBoolean = (val: any): boolean => {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'string') {
+          return ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase().trim());
+      }
+      return !!val;
+  }
+
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -257,7 +265,8 @@ export const useCustomers = () => {
                           tasks: Array.isArray(s.tasks) ? s.tasks : [],
                           lastOfferContactDate: s.lastOfferContactDate || '',
                           offerComments: s.offerComments || '',
-                          offered: !!s.offered,
+                          offered: toBoolean(s.offered),
+                          accepted: toBoolean(s.accepted),
                         }
                     }) 
                     : [],
@@ -266,16 +275,16 @@ export const useCustomers = () => {
                 pathwayToTitling: parseInt(c.pathwayToTitling, 10) || 0,
                 hasCredit,
                 hasSavings,
-                hasTituloPropiedad: !!c.hasTituloPropiedad,
-                hasDeslinde: !!c.hasDeslinde,
-                hasPermisoConstruccion: !!c.hasPermisoConstruccion,
-                modificacionLote: !!c.modificacionLote,
-                contratoATC: !!c.contratoATC,
-                pagoATC: !!c.pagoATC,
+                hasTituloPropiedad: toBoolean(c.hasTituloPropiedad),
+                hasDeslinde: toBoolean(c.hasDeslinde),
+                hasPermisoConstruccion: toBoolean(c.hasPermisoConstruccion),
+                modificacionLote: toBoolean(c.modificacionLote),
+                contratoATC: toBoolean(c.contratoATC),
+                pagoATC: toBoolean(c.pagoATC),
                 statusCarpetaATC: c.statusCarpetaATC || StatusCarpetaATC.NotApplicable,
                 recordatorioEntregaCarpeta: c.recordatorioEntregaCarpeta || '',
                 responsable: c.responsable || '',
-                startedConstruction: !!c.startedConstruction,
+                startedConstruction: toBoolean(c.startedConstruction),
                 atcAmount: c.atcAmount ? parseFloat(c.atcAmount) : 0,
                 atcFolderDeliveryDate: c.atcFolderDeliveryDate || '',
                 atcPrototype: c.atcPrototype ? parseInt(c.atcPrototype, 10) : undefined,
@@ -777,10 +786,10 @@ export const useCustomers = () => {
 
   const getTypedValue = (header: string, value: string): any => {
       const cleanValue = value.trim();
-      const toBoolean = (val: string): boolean => ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase());
+      const localToBoolean = (val: string): boolean => ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase());
 
       if (isBooleanHeader(header)) {
-          return toBoolean(cleanValue);
+          return localToBoolean(cleanValue);
       }
       
       if (isNumberHeader(header)) {
@@ -905,7 +914,6 @@ export const useCustomers = () => {
                               const abonoIndex = parseInt(parts[2], 10) - 1;
                               const abonoField = parts[3] as keyof Abono;
                               const stlData = strategy.customData as SolidarityTitlingLoanData;
-                              // FIX: When initializing a missing `abonos` array, populate it with full `Abono` objects.
                               if (!stlData.abonos) stlData.abonos = Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false }));
                               if (stlData.abonos[abonoIndex]) {
                                 (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
@@ -927,11 +935,9 @@ export const useCustomers = () => {
 
               updatedCustomer.lastUpdate = now;
               
-              if(JSON.stringify(originalCustomer) !== JSON.stringify(updatedCustomer)) {
-                   const customerLogs: ChangeLogEntry[] = [{ timestamp: now, user: "Sistema CRM (CSV)", description: `Actualizado masivamente desde archivo CSV.` }];
-                   updatedCustomer.history = [...customerLogs, ...(updatedCustomer.history || [])];
-                   customersToUpdate.push(updatedCustomer);
-              }
+              const customerLogs: ChangeLogEntry[] = [{ timestamp: now, user: "Sistema CRM (CSV)", description: `Actualizado masivamente desde archivo CSV.` }];
+              updatedCustomer.history = [...customerLogs, ...(updatedCustomer.history || [])];
+              customersToUpdate.push(updatedCustomer);
           }
 
           if (customersToUpdate.length === 0) {
