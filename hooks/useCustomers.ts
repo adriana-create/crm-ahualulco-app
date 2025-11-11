@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry, Abono } from '../types';
 import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES, STRATEGIES } from '../constants';
@@ -752,6 +753,44 @@ export const useCustomers = () => {
       return { headers, data };
   };
 
+  const isBooleanHeader = (header: string): boolean => {
+      const patterns = [
+          /^has[A-Z]/, 
+          /^basicInfo_has[A-Z]/,
+          /_(offered|accepted|realizado|validado)$/,
+          /_(firmoAdenda|recibioFlyer|agendoCitaAsesoria|solicitoInformacionIF|logroCredito|startedConstructionWithin60Days)$/,
+      ];
+      if (['modificacionLote', 'contratoATC', 'pagoATC', 'startedConstruction'].includes(header)) return true;
+      return patterns.some(p => p.test(header));
+  }
+  
+  const isNumberHeader = (header: string): boolean => {
+      const patterns = [
+        /_(cantidad|monto|amount|count|numero|prototype)$/i,
+        /_lots$/,
+        /_pathwayToTitling$/
+      ];
+      if (['lots', 'pathwayToTitling', 'atcAmount', 'atcPrototype'].includes(header)) return true;
+      return patterns.some(p => p.test(header));
+  }
+
+  const getTypedValue = (header: string, value: string): any => {
+      const cleanValue = value.trim();
+      const toBoolean = (val: string): boolean => ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase());
+
+      if (isBooleanHeader(header)) {
+          return toBoolean(cleanValue);
+      }
+      
+      if (isNumberHeader(header)) {
+          if (cleanValue === '') return 0;
+          const num = parseFloat(cleanValue);
+          return isNaN(num) ? 0 : num;
+      }
+      
+      return cleanValue;
+  }
+
   const updateCustomersFromCsv = useCallback(async (csvString: string) => {
       if (!csvString.trim()) {
           alert("El archivo CSV está vacío.");
@@ -771,18 +810,8 @@ export const useCustomers = () => {
               throw new Error("El archivo CSV debe contener una columna 'id'.");
           }
 
-          const toBoolean = (val: string): boolean => {
-              if (!val) return false;
-              return ['true', 'verdadero', 'sí', 'si', '1'].includes(val.toLowerCase().trim());
-          };
-
           const customersToUpdate: Customer[] = [];
           const currentCustomersMap = new Map(customers.map(c => [c.id, c]));
-
-          const customerBooleanKeys: (keyof Customer)[] = ['hasTituloPropiedad', 'hasDeslinde', 'hasPermisoConstruccion', 'modificacionLote', 'contratoATC', 'pagoATC', 'startedConstruction'];
-          const basicInfoBooleanKeys: (keyof BasicInfo)[] = ['hasOtherProperty', 'hasCreditOrSavings', 'belongsToSavingsGroup'];
-          const strategyBooleanKeys: (keyof CustomerStrategy)[] = ['offered', 'accepted'];
-          const abonoBooleanKeys: (keyof Abono)[] = ['realizado', 'validado'];
 
           for (const row of rows) {
               const customerId = row.id;
@@ -798,43 +827,22 @@ export const useCustomers = () => {
               const now = new Date().toISOString();
               
               for (const header of headers) {
-                  const value = row[header];
-                  if (value === undefined) continue;
+                  if (row[header] === undefined) continue;
                   
+                  const newValue = getTypedValue(header, row[header]);
                   const parts = header.split('_');
-                  try {
-                      if (parts.length === 1 && header !== 'id') {
-                          const key = header as keyof Customer;
-                          const oldValue = updatedCustomer[key];
-                          let newValue: any;
 
-                          if (customerBooleanKeys.includes(key)) {
-                              newValue = toBoolean(value);
-                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
-                          } else if (typeof oldValue === 'number') {
-                              newValue = parseFloat(value) || 0;
-                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
-                          } else if (key === 'potentialStrategies') {
-                              newValue = value.split(';').filter(Boolean);
-                              if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) (updatedCustomer as any)[key] = newValue;
-                          } else {
-                              newValue = value;
-                              if (String(oldValue) !== String(newValue)) (updatedCustomer as any)[key] = newValue;
+                  try {
+                       if (parts.length === 1 && header !== 'id') {
+                          const key = header as keyof Customer;
+                          if (String(updatedCustomer[key]) !== String(newValue)) {
+                            (updatedCustomer as any)[key] = newValue;
                           }
                       } else if (parts[0] === 'basicInfo') {
                           const key = parts[1] as keyof BasicInfo;
                           if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
-                          const oldValue = updatedCustomer.basicInfo[key];
-                          let newValue: any;
-
-                          if (basicInfoBooleanKeys.includes(key)) {
-                              newValue = toBoolean(value);
-                          } else {
-                              newValue = value === '' ? undefined : value;
-                          }
-                          
-                          if (oldValue !== newValue) {
-                              (updatedCustomer.basicInfo as any)[key] = newValue;
+                          if (String(updatedCustomer.basicInfo[key]) !== String(newValue)) {
+                            (updatedCustomer.basicInfo as any)[key] = newValue;
                           }
                       } else if (STRATEGIES.some(s => s.id === parts[0])) {
                           const strategyId = parts[0];
@@ -842,21 +850,26 @@ export const useCustomers = () => {
 
                           if (!strategy) {
                                 const newStrategy: CustomerStrategy = {
-                                    strategyId: strategyId,
-                                    offered: false,
-                                    accepted: false,
-                                    status: StrategyStatus.NotStarted,
-                                    lastUpdate: now,
-                                    tasks: [],
-                                    customData: {},
-                                    lastOfferContactDate: '',
-                                    offerComments: '',
+                                    strategyId: strategyId, offered: false, accepted: false,
+                                    status: StrategyStatus.NotStarted, lastUpdate: now, tasks: [],
+                                    customData: {}, lastOfferContactDate: '', offerComments: '',
                                 };
-
+                                // FIX: Correctly initialize the customData for a new STL strategy to match the Abono type.
                                 if (strategyId === 'STL') {
                                     newStrategy.customData = {
+                                        referencia: '',
+                                        riesgo: 'Bajo',
+                                        expediente: '',
+                                        montoPrestamo: LOAN_AMOUNT,
+                                        firmoAdenda: false,
+                                        modalidadAbono: '',
                                         abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({
-                                            realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false
+                                            realizado: false,
+                                            cantidad: 0,
+                                            fecha: '',
+                                            formaDePago: '',
+                                            comprobante: '',
+                                            validado: false
                                         }))
                                     };
                                 } else if (strategyId === 'TLS') {
@@ -867,7 +880,6 @@ export const useCustomers = () => {
                                         }, {} as NonNullable<TailoredLegalSupportData['procedureStatus']>)
                                     };
                                 }
-                                
                                 updatedCustomer.strategies.push(newStrategy);
                                 strategy = newStrategy;
                           }
@@ -875,65 +887,41 @@ export const useCustomers = () => {
                           if (!strategy.customData) strategy.customData = {};
                           
                           const field = parts[1];
+                          const key = parts.slice(1).join('_') as keyof CustomerStrategy;
 
                           if (field === 'customData') {
                                const customDataKey = parts.slice(2).join('_');
-                               const oldValue = strategy.customData[customDataKey];
-                               let newValue: any = value;
-                               if (typeof oldValue === 'boolean') newValue = toBoolean(value);
-                               else if (typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                               if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
-
+                               if (strategyId === 'TLS' && customDataKey.includes('status') || customDataKey.includes('subStatus')) {
+                                    const keyParts = parts.slice(2);
+                                    const property = keyParts.pop() as 'status' | 'subStatus';
+                                    const procedureKey = keyParts.join('_').replace(/_/g, ' ');
+                                    const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase() === procedureKey.toLowerCase());
+                                    if(procedureName && property){
+                                        const tlsData = strategy.customData as TailoredLegalSupportData;
+                                        if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
+                                        if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
+                                        if(String(tlsData.procedureStatus[procedureName]?.[property]) !== String(newValue)){
+                                          (tlsData.procedureStatus[procedureName] as any)[property] = newValue;
+                                        }
+                                    }
+                               } else {
+                                  if(String(strategy.customData[customDataKey]) !== String(newValue)) {
+                                    strategy.customData[customDataKey] = newValue;
+                                  }
+                               }
                           } else if (strategyId === 'STL' && field === 'abono') {
                               const abonoIndex = parseInt(parts[2], 10) - 1;
                               const abonoField = parts[3] as keyof Abono;
                               const stlData = strategy.customData as SolidarityTitlingLoanData;
-                              if (stlData?.abonos?.[abonoIndex]) {
-                                  const oldValue = stlData.abonos[abonoIndex][abonoField];
-                                  let newValue: any = value;
-                                  if (abonoBooleanKeys.includes(abonoField)) {
-                                      newValue = toBoolean(value);
-                                  } else if (abonoField === 'cantidad') {
-                                      newValue = parseFloat(value) || 0;
-                                  }
-                                  
-                                  if (String(oldValue) !== String(newValue)) {
-                                      (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
+                              if (!stlData.abonos) stlData.abonos = Array(NUM_PAYMENTS).fill(null).map(()=>({}));
+                              if (stlData.abonos[abonoIndex]) {
+                                  if(String(stlData.abonos[abonoIndex][abonoField]) !== String(newValue)) {
+                                     (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
                                   }
                               }
-                          } else if(strategyId === 'TLS' && field === 'customData'){
-                                const keyParts = parts.slice(2);
-                                const property = keyParts.pop() as 'status' | 'subStatus' | undefined;
-                                const procedureKey = keyParts.join('_').replace(/_/g, ' ');
-                                const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase() === procedureKey);
-                                
-                                if (procedureName && property) {
-                                    const tlsData = strategy.customData as TailoredLegalSupportData;
-                                    if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
-                                    if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
-                                    
-                                    const oldValue = tlsData.procedureStatus[procedureName]?.[property];
-                                    if (String(oldValue) !== String(value)) {
-                                        (tlsData.procedureStatus[procedureName] as any)[property] = value;
-                                    }
-                                } else {
-                                     const customDataKey = parts.slice(2).join('_');
-                                     const oldValue = strategy.customData[customDataKey];
-                                     let newValue: any = value;
-                                     if(typeof oldValue === 'boolean') newValue = toBoolean(value);
-                                     else if(typeof oldValue === 'number') newValue = parseFloat(value) || 0;
-                                     if(String(oldValue) !== String(newValue)) strategy.customData[customDataKey] = newValue;
-                                }
                           } else {
-                              const key = field as keyof CustomerStrategy;
-                              const oldValue = strategy[key];
-                              let newValue: any = value;
-                              if (strategyBooleanKeys.includes(key)) {
-                                  newValue = toBoolean(value);
-                              }
-                              
-                              if (String(oldValue) !== String(newValue)) {
-                                  (strategy as any)[key] = newValue;
+                              if (String(strategy[key]) !== String(newValue)) {
+                                (strategy as any)[key] = newValue;
                               }
                           }
                       }
@@ -969,7 +957,6 @@ export const useCustomers = () => {
           });
 
           for (const customer of customersToUpdate) {
-              // Passing empty logs because they are already added to the customer object
               await updateCustomer(customer, []); 
           }
 
