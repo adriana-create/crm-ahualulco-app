@@ -819,7 +819,7 @@ export const useCustomers = () => {
                               if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) (updatedCustomer as any)[key] = newValue;
                           } else {
                               newValue = value;
-                              if (oldValue !== newValue) (updatedCustomer as any)[key] = newValue;
+                              if (String(oldValue) !== String(newValue)) (updatedCustomer as any)[key] = newValue;
                           }
                       } else if (parts[0] === 'basicInfo') {
                           const key = parts[1] as keyof BasicInfo;
@@ -840,14 +840,38 @@ export const useCustomers = () => {
                           const strategyId = parts[0];
                           let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
-                          if (!strategy && value.trim() !== '') {
-                              // If any value for a strategy exists, create it
-                              const newStrategy: Partial<CustomerStrategy> = { strategyId, customData: {} };
-                              updatedCustomer.strategies.push(newStrategy as CustomerStrategy);
-                              strategy = updatedCustomer.strategies[updatedCustomer.strategies.length-1];
+                          if (!strategy) {
+                                const newStrategy: CustomerStrategy = {
+                                    strategyId: strategyId,
+                                    offered: false,
+                                    accepted: false,
+                                    status: StrategyStatus.NotStarted,
+                                    lastUpdate: now,
+                                    tasks: [],
+                                    customData: {},
+                                    lastOfferContactDate: '',
+                                    offerComments: '',
+                                };
+
+                                if (strategyId === 'STL') {
+                                    newStrategy.customData = {
+                                        abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({
+                                            realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false
+                                        }))
+                                    };
+                                } else if (strategyId === 'TLS') {
+                                     newStrategy.customData = {
+                                        procedureStatus: LEGAL_PROCEDURES.reduce((acc, proc) => {
+                                            acc[proc] = { status: 'No iniciado', subStatus: '' };
+                                            return acc;
+                                        }, {} as NonNullable<TailoredLegalSupportData['procedureStatus']>)
+                                    };
+                                }
+                                
+                                updatedCustomer.strategies.push(newStrategy);
+                                strategy = newStrategy;
                           }
                           
-                          if (!strategy) continue;
                           if (!strategy.customData) strategy.customData = {};
                           
                           const field = parts[1];
@@ -880,8 +904,8 @@ export const useCustomers = () => {
                           } else if(strategyId === 'TLS' && field === 'customData'){
                                 const keyParts = parts.slice(2);
                                 const property = keyParts.pop() as 'status' | 'subStatus' | undefined;
-                                const procedureKey = keyParts.join('_');
-                                const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase().replace(/\s+/g, '_') === procedureKey);
+                                const procedureKey = keyParts.join('_').replace(/_/g, ' ');
+                                const procedureName = LEGAL_PROCEDURES.find(p => p.toLowerCase() === procedureKey);
                                 
                                 if (procedureName && property) {
                                     const tlsData = strategy.customData as TailoredLegalSupportData;
@@ -908,7 +932,7 @@ export const useCustomers = () => {
                                   newValue = toBoolean(value);
                               }
                               
-                              if (oldValue !== newValue) {
+                              if (String(oldValue) !== String(newValue)) {
                                   (strategy as any)[key] = newValue;
                               }
                           }
