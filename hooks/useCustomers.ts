@@ -1,7 +1,7 @@
 
 
 import { useState, useCallback, useEffect } from 'react';
-import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry, Abono } from '../types';
+import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry, Abono, TechnicalAssistanceIncentiveData } from '../types';
 import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES, STRATEGIES } from '../constants';
 
 // IMPORTANT: Paste your deployed Google Apps Script URL here.
@@ -850,11 +850,43 @@ export const useCustomers = () => {
                           let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
 
                           if (!strategy) {
-                              addStrategyToCustomer(customerId, strategyId);
-                              const customerAfterAdd = customers.find(c=> c.id === customerId)!;
-                              updatedCustomer.strategies = [...customerAfterAdd.strategies];
-                              strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
-                              if (!strategy) continue;
+                                let customData: Record<string, any> = {};
+                                if (strategyId === 'STL') {
+                                    customData = {
+                                        referencia: '', riesgo: 'Bajo', expediente: '', montoPrestamo: LOAN_AMOUNT, firmoAdenda: false, modalidadAbono: '',
+                                        abonos: Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false }))
+                                    };
+                                } else if (strategyId === 'TLS') {
+                                    const procedureStatus = LEGAL_PROCEDURES.reduce((acc, proc) => {
+                                        acc[proc] = { status: 'No iniciado', subStatus: '' };
+                                        return acc;
+                                    }, {} as NonNullable<TailoredLegalSupportData['procedureStatus']>);
+                                    customData = { procedureStatus, contactCount: 0, recibioFlyer: false, fechaUltimoContacto: '', fechaSeguimiento: '', observaciones: '' };
+                                } else if (strategyId === 'DPFI') {
+                                    customData = {
+                                        agendoCitaAsesoria: false, fechaCitaAsesoria: '', productoInteres: '', fechaUltimoContacto: '', numeroContacto: 0, recordatorioProximoContacto: '',
+                                        solicitoInformacionIF: false, logroCredito: false, institucion: '', montoCredito: 0, observaciones: '', recibioFlyer: false,
+                                    };
+                                } else if (strategyId === 'TAI') {
+                                    customData = { startedConstructionWithin60Days: false, notes: '' };
+                                } else {
+                                  const fields = STRATEGY_SPECIFIC_FIELDS[strategyId];
+                                  if (fields) {
+                                    customData = fields.reduce((acc, field) => {
+                                      acc[field.key] = field.type === 'number' ? 0 : '';
+                                      return acc;
+                                    }, {} as Record<string, any>);
+                                  }
+                                }
+
+                                const newStrategy: CustomerStrategy = {
+                                    strategyId: strategyId,
+                                    offered: false, accepted: false, status: StrategyStatus.NotStarted, lastUpdate: now, tasks: [],
+                                    customData, lastOfferContactDate: '', offerComments: '',
+                                };
+                                
+                                updatedCustomer.strategies.push(newStrategy);
+                                strategy = newStrategy;
                           }
                           
                           if (!strategy.customData) strategy.customData = {};
@@ -941,7 +973,7 @@ export const useCustomers = () => {
       } finally {
           setLoading(false);
       }
-  }, [customers, fetchCustomers, addStrategyToCustomer]);
+  }, [customers, fetchCustomers]);
   // --- END OF CSV UPDATE REFACTOR ---
 
   const deleteCustomer = useCallback(async (customerId: string) => {
