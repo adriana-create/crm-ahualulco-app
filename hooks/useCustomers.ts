@@ -1,4 +1,5 @@
 
+
 import { useState, useCallback, useEffect } from 'react';
 import { Customer, LegalStatus, StrategyStatus, Task, CustomerStrategy, StatusCarpetaATC, SolidarityTitlingLoanData, TailoredLegalSupportData, DirectPromotionFIData, BasicInfo, TriStateStatus, ChangeLogEntry, Abono } from '../types';
 import { LOAN_AMOUNT, NUM_PAYMENTS, STRATEGY_SPECIFIC_FIELDS, LEGAL_PROCEDURES, STRATEGIES } from '../constants';
@@ -835,15 +836,11 @@ export const useCustomers = () => {
                   try {
                        if (parts.length === 1 && header !== 'id') {
                           const key = header as keyof Customer;
-                          if (String(updatedCustomer[key]) !== String(newValue)) {
-                            (updatedCustomer as any)[key] = newValue;
-                          }
+                          (updatedCustomer as any)[key] = newValue;
                       } else if (parts[0] === 'basicInfo') {
                           const key = parts[1] as keyof BasicInfo;
                           if (!updatedCustomer.basicInfo) updatedCustomer.basicInfo = {};
-                          if (String(updatedCustomer.basicInfo[key]) !== String(newValue)) {
-                            (updatedCustomer.basicInfo as any)[key] = newValue;
-                          }
+                          (updatedCustomer.basicInfo as any)[key] = newValue;
                       } else if (STRATEGIES.some(s => s.id === parts[0])) {
                           const strategyId = parts[0];
                           let strategy = updatedCustomer.strategies.find(s => s.strategyId === strategyId);
@@ -854,7 +851,6 @@ export const useCustomers = () => {
                                     status: StrategyStatus.NotStarted, lastUpdate: now, tasks: [],
                                     customData: {}, lastOfferContactDate: '', offerComments: '',
                                 };
-                                // FIX: Correctly initialize the customData for a new STL strategy to match the Abono type.
                                 if (strategyId === 'STL') {
                                     newStrategy.customData = {
                                         referencia: '',
@@ -900,29 +896,22 @@ export const useCustomers = () => {
                                         const tlsData = strategy.customData as TailoredLegalSupportData;
                                         if (!tlsData.procedureStatus) tlsData.procedureStatus = {};
                                         if (!tlsData.procedureStatus[procedureName]) tlsData.procedureStatus[procedureName] = { status: 'No iniciado' };
-                                        if(String(tlsData.procedureStatus[procedureName]?.[property]) !== String(newValue)){
-                                          (tlsData.procedureStatus[procedureName] as any)[property] = newValue;
-                                        }
+                                        (tlsData.procedureStatus[procedureName] as any)[property] = newValue;
                                     }
                                } else {
-                                  if(String(strategy.customData[customDataKey]) !== String(newValue)) {
-                                    strategy.customData[customDataKey] = newValue;
-                                  }
+                                  strategy.customData[customDataKey] = newValue;
                                }
                           } else if (strategyId === 'STL' && field === 'abono') {
                               const abonoIndex = parseInt(parts[2], 10) - 1;
                               const abonoField = parts[3] as keyof Abono;
                               const stlData = strategy.customData as SolidarityTitlingLoanData;
-                              if (!stlData.abonos) stlData.abonos = Array(NUM_PAYMENTS).fill(null).map(()=>({}));
+                              // FIX: When initializing a missing `abonos` array, populate it with full `Abono` objects.
+                              if (!stlData.abonos) stlData.abonos = Array(NUM_PAYMENTS).fill(null).map(() => ({ realizado: false, cantidad: 0, fecha: '', formaDePago: '', comprobante: '', validado: false }));
                               if (stlData.abonos[abonoIndex]) {
-                                  if(String(stlData.abonos[abonoIndex][abonoField]) !== String(newValue)) {
-                                     (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
-                                  }
+                                (stlData.abonos[abonoIndex] as any)[abonoField] = newValue;
                               }
                           } else {
-                              if (String(strategy[key]) !== String(newValue)) {
-                                (strategy as any)[key] = newValue;
-                              }
+                            (strategy as any)[key] = newValue;
                           }
                       }
                   } catch (e) {
